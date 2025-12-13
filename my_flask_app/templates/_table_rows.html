@@ -1,0 +1,16 @@
+{% for res in reservations %}
+<tr>
+    <td>{{ res['res_date'] }}<br><small style="color:#666">{{ res['time_slot'] }}</small></td>
+    <td>{{ res['name'] }}</td>
+    <td><strong style="letter-spacing: 2px;">{{ res['otp'] }}</strong></td>
+    <td>
+        <form method="POST" onsubmit="return confirm('Delete?');">
+            <input type="hidden" name="delete_res" value="true">
+            <input type="hidden" name="res_otp" value="{{ res['otp'] }}">
+            <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+        </form>
+    </td>
+</tr>
+{% else %}
+<tr><td colspan="4" style="text-align: center; color: #999;">No active reservations.</td></tr>
+{% endfor %}

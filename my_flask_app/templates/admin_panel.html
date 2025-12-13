@@ -94,26 +94,30 @@
     <div class="card">
         <h3>📅 Active Reservations</h3>
         <table>
-            <tr><th>When</th><th>Name</th><th>OTP</th><th>Action</th></tr>
-            {% for res in reservations %}
-            <tr>
-                <td>{{ res['res_date'] }}<br><small>{{ res['time_slot'] }}</small></td>
-                <td>{{ res['name'] }}</td>
-                <td><strong style="letter-spacing: 2px;">{{ res['otp'] }}</strong></td>
-                <td>
-                    <form method="POST" onsubmit="return confirm('Delete?');">
-                        <input type="hidden" name="delete_res" value="true">
-                        <input type="hidden" name="res_otp" value="{{ res['otp'] }}">
-                        <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
-                    </form>
-                </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="4" style="text-align: center; color: #999;">No active reservations.</td></tr>
-            {% endfor %}
+            <thead>
+                <tr><th>When</th><th>Name</th><th>OTP</th><th>Action</th></tr>
+            </thead>
+            <tbody id="live-table">
+                {% include '_table_rows.html' %} 
+            </tbody>
         </table>
     </div>
 </div>
+
+<script>
+    function refreshTable() {
+        fetch('/api/get_reservations_table')
+            .then(response => response.text())
+            .then(html => {
+                // This swaps ONLY the inside of the table body
+                document.getElementById('live-table').innerHTML = html;
+            })
+            .catch(err => console.error('Failed to update table:', err));
+    }
+
+    // Refresh every 5000 milliseconds (5 seconds)
+    setInterval(refreshTable, 5000);
+</script>
 
 </body>
 </html>

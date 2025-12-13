@@ -198,7 +198,16 @@ def logout():
     session.pop('is_admin', None)
     return redirect(url_for('dashboard'))
 
-# --- API ROUTES (ESP32) ---
+# --- API ROUTES (ESP32 & AJAX) ---
+
+@app.route('/api/get_reservations_table')
+def get_reservations_table():
+    if 'is_admin' not in session: return "Access Denied", 403
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
+    return render_template('_table_rows.html', reservations=rows)
+
 @app.route('/api/staff_entry', methods=['GET'])
 def staff_entry():
     uid = request.args.get('uid')
