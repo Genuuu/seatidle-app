@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SeatIdle | Reservations</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="container" style="max-width: 600px;">
+    <a href="/" class="back-link">← Back to Dashboard</a>
+    <h1>📅 Seat Reservations</h1>
+
+    {% if new_otp %}
+    <div class="otp-display">
+        Code: {{ new_otp }}<br>
+        <small style="font-size: 14px; font-weight: normal; color: #047857;">Save this code to check in!</small>
+    </div>
+    {% endif %}
+
+    {% if message %}
+    <div class="announcement-bar" style="background: {{ '#d1fae5' if '✅' in message else '#fee2e2' }}; color: {{ '#065f46' if '✅' in message else '#991b1b' }}; border: none;">
+        {{ message }}
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <h2>New Booking</h2>
+        <form method="POST">
+            <input type="hidden" name="create_booking" value="true">
+            <label>Full Name</label>
+            <input type="text" name="name" required placeholder="Ex: John Doe">
+            
+            <div style="display: flex; gap: 10px;">
+                <div style="flex:1">
+                    <label>Date</label>
+                    <input type="date" name="date" required>
+                </div>
+                <div style="flex:1">
+                    <label>Time Slot</label>
+                    <select name="time">
+                        <option>08:00 - 10:00</option>
+                        <option>10:00 - 12:00</option>
+                        <option>12:00 - 14:00</option>
+                        <option>14:00 - 16:00</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn btn-primary" type="submit">Generate Booking Code</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Upcoming Bookings</h3>
+        {% for booking in bookings %}
+        <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee;">
+            <div>
+                <strong>{{ booking['name'] }}</strong><br>
+                <small style="color: gray;">{{ booking['res_date'] }} @ {{ booking['time_slot'] }}</small>
+            </div>
+            <span class="badge badge-green" style="height: fit-content;">Active</span>
+        </div>
+        {% else %}
+            <p style="color: #999;">No active reservations.</p>
+        {% endfor %}
+    </div>
+
+    <div class="card" style="border: 1px solid var(--danger);">
+        <h3 style="color: var(--danger);">🚫 Cancel Reservation</h3>
+        <p style="font-size: 14px; color: #666;">Enter your OTP code below.</p>
+        <form method="POST" style="display: flex; gap: 10px;">
+            <input type="hidden" name="cancel_booking" value="true">
+            <input type="text" name="otp_check" placeholder="4-Digit Code" required style="margin: 0; text-align: center;">
+            <button class="btn btn-danger btn-sm" type="submit" style="width: auto;">Cancel</button>
+        </form>
+    </div>
+</div>
+
+</body>
+</html>

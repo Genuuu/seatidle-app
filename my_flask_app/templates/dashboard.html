@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
+    <meta http-equiv="refresh" content="30">
+    <title>SeatIdle | Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            function updateClock() {
+                var now = new Date();
+                document.getElementById('live-date').textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                document.getElementById('live-time').textContent = now.toLocaleTimeString('en-US', { hour12: false }); 
+            }
+            setInterval(updateClock, 1000);
+            updateClock(); 
+        });
+    </script>
+</head>
+<body>
+
+<div class="clock-box">
+    <span id="live-date">...</span> | <span id="live-time">...</span>
+</div>
+
+<div class="container" style="max-width: 500px;">
+    <div class="card center">
+        <div style="font-size: 40px; margin-bottom: 10px;">🪑</div>
+        <h1>SeatIdle</h1>
+
+        {% if announcement %}
+        <div class="announcement-bar">
+            <strong>📢 NOTICE:</strong> {{ announcement }}
+        </div>
+        {% endif %}
+        
+        <div class="seat-counter">{{ seats }}</div>
+        <div class="label">Seats Available</div>
+
+        <a href="/reservations" class="btn btn-primary" style="margin-bottom: 10px;">📅 Book a Seat</a>
+        <a href="/staff" class="btn btn-secondary">👨‍💼 View Staff On Duty</a>
+    </div>
+</div>
+
+</body>
+</html>

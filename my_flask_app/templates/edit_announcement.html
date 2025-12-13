@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Announcement</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body style="justify-content: center;">
+
+<div class="card" style="width: 400px;">
+    <h2>✏️ Edit Announcement</h2>
+    <form method="POST">
+        <label>Message</label>
+        <textarea name="message" required autofocus rows="4">{{ ann['message'] }}</textarea>
+        
+        <button type="submit" class="btn btn-primary" style="margin-top: 20px;">Save Changes</button>
+        <a href="/admin/panel" class="btn btn-secondary" style="margin-top: 10px; text-decoration: none;">Cancel</a>
+    </form>
+</div>
+
+</body>
+</html>

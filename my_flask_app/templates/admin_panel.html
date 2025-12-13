@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SeatIdle | Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1>⚙️ Admin Panel</h1>
+        <a href="/logout" class="btn btn-danger btn-sm">Logout</a>
+    </div>
+
+    {% if msg %} 
+    <div class="announcement-bar" style="background: #d1fae5; color: #065f46; border: none; text-align: center;">{{ msg }}</div> 
+    {% endif %}
+
+    <div class="card">
+        <h3>📢 Announcements</h3>
+        <form method="POST" style="display: flex; gap: 10px; background: #fffbeb; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+            <input type="hidden" name="post_announcement" value="true">
+            <input type="text" name="message" placeholder="New announcement text..." required style="margin: 0;">
+            <button type="submit" class="btn btn-warning btn-sm">Post</button>
+        </form>
+
+        <table>
+            <tr><th>Date</th><th>Message</th><th>Action</th></tr>
+            {% for ann in announcements %}
+            <tr>
+                <td style="font-size: 12px; color: #666;">{{ ann['created_at'][0:10] }}</td>
+                <td>{{ ann['message'] }}</td>
+                <td>
+                    <a href="/admin/edit_announcement/{{ ann['id'] }}" class="btn btn-warning btn-sm" style="text-decoration:none;">Edit</a>
+                    <form method="POST" onsubmit="return confirm('Delete?');" style="display:inline;">
+                        <input type="hidden" name="delete_announcement" value="true">
+                        <input type="hidden" name="ann_id" value="{{ ann['id'] }}">
+                        <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+                <tr><td colspan="3" style="text-align: center; color: #999;">No announcements.</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>🪑 Seat Control</h3>
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="font-size: 18px;">Current Count: <strong>{{ seats }}</strong></div>
+            <form method="POST" style="flex: 1; display: flex; gap: 10px;">
+                <input type="hidden" name="reset_seats" value="true">
+                <input type="number" name="seat_count" placeholder="Set exact count" required style="margin: 0;">
+                <button type="submit" class="btn btn-primary btn-sm">Update</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>👨‍💼 Staff Database</h3>
+        <form method="POST" style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <input type="hidden" name="add_staff" value="true">
+            <input type="text" name="new_uid" placeholder="Card UID" required style="margin:0;">
+            <input type="text" name="new_name" placeholder="Full Name" required style="margin:0;">
+            <button type="submit" class="btn btn-secondary btn-sm">Add Staff</button>
+        </form>
+
+        <table>
+            <tr><th>UID</th><th>Name</th><th>Status</th><th>Actions</th></tr>
+            {% for person in staff %}
+            <tr>
+                <td><code style="background: #f3f4f6; padding: 4px;">{{ person['uid'] }}</code></td>
+                <td><strong>{{ person['name'] }}</strong></td>
+                <td>
+                    {% if person['is_present'] %}<span class="badge badge-green">IN</span>{% else %}<span class="badge badge-gray">OUT</span>{% endif %}
+                </td>
+                <td>
+                    <a href="/admin/edit_staff/{{ person['uid'] }}" class="btn btn-warning btn-sm" style="text-decoration:none;">Edit</a>
+                    <form method="POST" onsubmit="return confirm('Delete {{ person.name }}?');" style="display:inline;">
+                        <input type="hidden" name="delete_staff" value="true">
+                        <input type="hidden" name="staff_uid" value="{{ person['uid'] }}">
+                        <button type="submit" class="btn btn-danger btn-sm">Del</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="card">
+        <h3>📅 Active Reservations</h3>
+        <table>
+            <tr><th>When</th><th>Name</th><th>OTP</th><th>Action</th></tr>
+            {% for res in reservations %}
+            <tr>
+                <td>{{ res['res_date'] }}<br><small>{{ res['time_slot'] }}</small></td>
+                <td>{{ res['name'] }}</td>
+                <td><strong style="letter-spacing: 2px;">{{ res['otp'] }}</strong></td>
+                <td>
+                    <form method="POST" onsubmit="return confirm('Delete?');">
+                        <input type="hidden" name="delete_res" value="true">
+                        <input type="hidden" name="res_otp" value="{{ res['otp'] }}">
+                        <button type="submit" class="btn btn-danger btn-sm">🗑️</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" style="text-align: center; color: #999;">No active reservations.</td></tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+</body>
+</html>
