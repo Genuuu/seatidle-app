@@ -57,7 +57,6 @@ def dashboard():
     seats = get_seats()
     announcement = None
     with sqlite3.connect(DB_FILE) as conn:
-        # Show ONLY the single newest announcement
         row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         if row: announcement = row[0]
 
@@ -207,6 +206,11 @@ def get_reservations_table():
         conn.row_factory = sqlite3.Row
         rows = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
     return render_template('_table_rows.html', reservations=rows)
+
+@app.route('/api/get_seat_count')
+def get_seat_count():
+    if 'is_admin' not in session: return "Access Denied", 403
+    return str(get_seats())
 
 @app.route('/api/staff_entry', methods=['GET'])
 def staff_entry():

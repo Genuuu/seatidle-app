@@ -1,0 +1,19 @@
+<div class="clock-box">
+    <span id="live-date">...</span> | <span id="live-time">...</span>
+</div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        function updateClock() {
+            var now = new Date();
+            var dateElem = document.getElementById('live-date');
+            var timeElem = document.getElementById('live-time');
+            if(dateElem && timeElem) {
+                dateElem.textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                timeElem.textContent = now.toLocaleTimeString('en-US', { hour12: false }); 
+            }
+        }
+        setInterval(updateClock, 1000);
+        updateClock(); 
+    });
+</script>

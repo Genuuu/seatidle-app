@@ -9,6 +9,8 @@
 </head>
 <body>
 
+{% include 'clock_widget.html' %}
+
 <div class="container">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h1>⚙️ Admin Panel</h1>
@@ -51,7 +53,7 @@
     <div class="card">
         <h3>🪑 Seat Control</h3>
         <div style="display: flex; align-items: center; gap: 20px;">
-            <div style="font-size: 18px;">Current Count: <strong>{{ seats }}</strong></div>
+            <div style="font-size: 18px;">Current Count: <strong id="live-seats">{{ seats }}</strong></div>
             <form method="POST" style="flex: 1; display: flex; gap: 10px;">
                 <input type="hidden" name="reset_seats" value="true">
                 <input type="number" name="seat_count" placeholder="Set exact count" required style="margin: 0;">
@@ -105,18 +107,16 @@
 </div>
 
 <script>
-    function refreshTable() {
+    function refreshDashboard() {
         fetch('/api/get_reservations_table')
             .then(response => response.text())
-            .then(html => {
-                // This swaps ONLY the inside of the table body
-                document.getElementById('live-table').innerHTML = html;
-            })
-            .catch(err => console.error('Failed to update table:', err));
-    }
+            .then(html => { document.getElementById('live-table').innerHTML = html; });
 
-    // Refresh every 5000 milliseconds (5 seconds)
-    setInterval(refreshTable, 5000);
+        fetch('/api/get_seat_count')
+            .then(response => response.text())
+            .then(count => { document.getElementById('live-seats').innerText = count; });
+    }
+    setInterval(refreshDashboard, 5000);
 </script>
 
 </body>

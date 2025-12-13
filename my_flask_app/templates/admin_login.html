@@ -9,6 +9,8 @@
 </head>
 <body style="justify-content: center;">
 
+{% include 'clock_widget.html' %}
+
 <div class="card center" style="width: 350px;">
     <h2>🔒 Admin Access</h2>
     {% if error %} <div style="color: var(--danger); margin-bottom: 15px;">{{ error }}</div> {% endif %}

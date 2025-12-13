@@ -1,4 +1,3 @@
-/* static/style.css */
 :root {
     --primary: #4f46e5;      /* Indigo */
     --primary-hover: #4338ca;
@@ -43,7 +42,7 @@ body {
 /* CONTAINERS */
 .container {
     width: 100%;
-    max-width: 800px; /* Slightly wider for admin/tables */
+    max-width: 800px;
     margin-top: 40px;
 }
 
@@ -53,10 +52,10 @@ body {
     border-radius: 24px;
     box-shadow: var(--shadow);
     margin-bottom: 25px;
-    text-align: left; /* Default left align for forms/tables */
+    text-align: left;
 }
 
-.card.center { text-align: center; } /* For dashboard/login */
+.card.center { text-align: center; }
 
 /* TYPOGRAPHY */
 h1, h2, h3 { color: var(--text-main); font-weight: 800; margin-top: 0; }
@@ -106,7 +105,7 @@ input:disabled { background: #f9fafb; color: #9ca3af; }
 .label { color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-size: 14px; font-weight: 700; margin-bottom: 30px; }
 .announcement-bar { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; padding: 15px; border-radius: 12px; margin-bottom: 20px; }
 
-/* TABLES (ADMIN) */
+/* TABLES */
 table { width: 100%; border-collapse: collapse; margin-top: 15px; }
 th { text-align: left; padding: 12px; color: var(--text-muted); border-bottom: 2px solid var(--border); font-size: 14px; }
 td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 15px; }

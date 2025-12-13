@@ -9,6 +9,8 @@
 </head>
 <body>
 
+{% include 'clock_widget.html' %}
+
 <div class="container" style="max-width: 600px;">
     <a href="/" class="back-link">← Back to Dashboard</a>
     <h1>📅 Seat Reservations</h1>
@@ -32,7 +34,6 @@
             <input type="hidden" name="create_booking" value="true">
             <label>Full Name</label>
             <input type="text" name="name" required placeholder="Ex: John Doe">
-            
             <div style="display: flex; gap: 10px;">
                 <div style="flex:1">
                     <label>Date</label>
