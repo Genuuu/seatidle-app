@@ -22,6 +22,29 @@
     {% endif %}
 
     <div class="card">
+        <h3>🔌 System Power</h3>
+        <div style="display: flex; align-items: center; justify-content: space-between; background: #f9fafb; padding: 15px; border-radius: 12px;">
+            
+            <div style="font-size: 16px; font-weight: 600;">
+                Current Status: 
+                {% if system_status == 1 %}
+                    <span style="color: #10b981;">🟢 Online</span>
+                {% else %}
+                    <span style="color: #ef4444;">🔴 Offline</span>
+                {% endif %}
+            </div>
+
+            <form method="POST" style="margin: 0;">
+                <input type="hidden" name="toggle_status" value="true">
+                {% if system_status == 1 %}
+                    <button type="submit" class="btn btn-danger btn-sm">Turn Offline 🛑</button>
+                {% else %}
+                    <button type="submit" class="btn btn-primary btn-sm" style="background: #10b981; border: none;">Turn Online ⚡</button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    <div class="card">
         <h3>📢 Announcements</h3>
         <form method="POST" style="display: flex; gap: 10px; background: #fffbeb; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
             <input type="hidden" name="post_announcement" value="true">
