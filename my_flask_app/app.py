@@ -12,7 +12,6 @@ app.secret_key = "super_secret_key_change_this"
 ADMIN_PASSWORD = "admin123"                     
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, 'library.db')
-# TOTAL_SEATS is dynamic now (fetched from DB), so no global variable here.
 
 # --- TIMEZONE HELPER ---
 def get_sl_time():
@@ -24,24 +23,22 @@ def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         
-        # 1. Standard Tables
+        # Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS status (id INTEGER PRIMARY KEY, available_seats INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff (uid TEXT PRIMARY KEY, name TEXT, is_present INTEGER, last_seen TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, event_type TEXT, user_type TEXT, occupancy INTEGER)''')
-        
-        # 2. Settings Table (For Online/Offline & Total Capacity)
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
+        
+        # Defaults
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
-        cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('total_capacity', '50')) # Default 50
+        cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('total_capacity', '50'))
 
-        # 3. Initial Status Data
         cursor.execute('SELECT count(*) FROM status')
         if cursor.fetchone()[0] == 0:
             cursor.execute('INSERT INTO status (id, available_seats) VALUES (1, 50)')
         
-        # 4. Default Staff
         staff_list = [('CARD-001', 'Mr. Perera'), ('CARD-002', 'Ms. Silva'), ('CARD-003', 'Dr. Jayantha')]
         for uid, name in staff_list:
             cursor.execute('INSERT OR IGNORE INTO staff (uid, name, is_present, last_seen) VALUES (?, ?, 0, ?)', (uid, name, get_sl_time()))
@@ -55,13 +52,11 @@ def get_seats():
         return conn.execute('SELECT available_seats FROM status WHERE id=1').fetchone()[0]
 
 def get_total_capacity():
-    """Fetches the Total Seat Limit from DB"""
     with sqlite3.connect(DB_FILE) as conn:
         row = conn.execute('SELECT value FROM settings WHERE key="total_capacity"').fetchone()
         return int(row[0]) if row else 50
 
 def get_system_status():
-    """Returns 1 for Online, 0 for Offline"""
     with sqlite3.connect(DB_FILE) as conn:
         row = conn.execute('SELECT value FROM settings WHERE key="system_status"').fetchone()
         return int(row[0]) if row else 1
@@ -71,8 +66,6 @@ def get_system_status():
 def dashboard():
     seats = get_seats()
     total = get_total_capacity()
-    
-    # Calculate Occupancy
     occupancy = max(0, total - seats)
     
     announcement = None
@@ -80,12 +73,24 @@ def dashboard():
     
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
+        
+        # Get Announcement
         row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         if row: announcement = row[0]
+        
+        # Get Logs
         logs = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 50').fetchall()
+        
+        # Get Staff Count
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
+        
+        # 🟢 NEW: Count Active Reservations (This was missing!)
+        res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
 
-    return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, system_status=system_status, occupancy=occupancy, staff_count=staff_count)
+    # 🟢 Make sure to pass 'res_count' here at the end!
+    return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, 
+                           system_status=system_status, occupancy=occupancy, 
+                           staff_count=staff_count, res_count=res_count)
 
 @app.route('/staff')
 def staff_view():
@@ -152,25 +157,17 @@ def admin_panel():
                 conn.execute('DELETE FROM announcements WHERE id = ?', (ann_id,))
             msg = "🗑️ Announcement Deleted"
 
-        # RESET CURRENT SEATS (Manual Override)
         elif 'reset_seats' in request.form:
             target = int(request.form.get('seat_count'))
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('UPDATE status SET available_seats = ? WHERE id=1', (target,))
             msg = f"✅ Seats reset to {target}"
         
-        # CORRECTED: UPDATE TOTAL CAPACITY (Preserving Occupancy Logic)
         elif 'update_capacity' in request.form:
             new_total = int(request.form.get('total_capacity'))
-            
-            # Get current state
             current_seats = get_seats()
             old_total = get_total_capacity()
-            
-            # Calculate actual people inside
             people_inside = max(0, old_total - current_seats)
-            
-            # Calculate NEW available seats to keep occupancy correct
             new_available = max(0, new_total - people_inside)
             
             with sqlite3.connect(DB_FILE) as conn:
@@ -221,7 +218,7 @@ def logout():
     session.pop('is_admin', None)
     return redirect(url_for('dashboard'))
 
-# --- IOT ROUTE (Smart Logic) ---
+# --- IOT ROUTE ---
 @app.route('/update_data', methods=['POST'])
 def update_data():
     try:
@@ -234,19 +231,17 @@ def update_data():
         uid = data.get('uid', None)
         
         now = get_sl_time()
-        total_limit = get_total_capacity() # Use dynamic limit
+        total_limit = get_total_capacity() 
 
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
 
-            # Handle Staff
             if uid:
                 is_present = 1 if event == "ENTRY" else 0
                 cursor.execute('UPDATE staff SET is_present = ?, last_seen = ? WHERE uid = ?', (is_present, now, uid))
                 cursor.execute('SELECT name FROM staff WHERE uid = ?', (uid,))
                 if cursor.fetchone(): user = "STAFF"
 
-            # Handle Student Seat Count
             if user != "STAFF":
                 new_available = max(0, total_limit - occupancy)
                 cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
@@ -275,7 +270,7 @@ def get_reservations_table():
         reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
     return render_template('_table_rows.html', reservations=reservations)
 
-# --- VIRTUAL SIMULATOR ---
+# --- SIMULATOR ---
 @app.route('/simulator')
 def simulator():
     return """
