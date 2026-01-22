@@ -34,14 +34,42 @@
         </div>
         {% endif %}
         
-        <div class="seat-counter">{{ seats }}</div>
+        <div class="seat-counter" id="live-seats">{{ seats }}</div>
         <div class="label">Seats Available</div>
+
+        <div style="display: flex; gap: 15px; justify-content: center; margin-bottom: 30px;">
+            
+            <div style="background: #f3f4f6; padding: 10px 15px; border-radius: 12px; width: 45%;">
+                <div style="font-size: 24px; font-weight: 800; color: #1f2937;">{{ occupancy }}</div>
+                <div style="font-size: 11px; color: #6b7280; font-weight: 700; text-transform: uppercase;">People Inside</div>
+            </div>
+
+            <div style="background: #f3f4f6; padding: 10px 15px; border-radius: 12px; width: 45%;">
+                <div style="font-size: 24px; font-weight: 800; color: #1f2937;">{{ staff_count }}</div>
+                <div style="font-size: 11px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Staff on Duty</div>
+            </div>
+
+        </div>
 
         <a href="/reservations" class="btn btn-primary" style="margin-bottom: 10px;">📅 Book a Seat</a>
         <a href="/staff" class="btn btn-secondary">👨‍💼 View Staff On Duty</a>
     </div>
 
 </div>
+
+<script>
+    // Only refresh the seat count number now
+    function refreshSeatCount() {
+        fetch('/api/get_seat_count')
+            .then(response => response.text())
+            .then(count => { 
+                document.getElementById('live-seats').innerText = count; 
+            })
+            .catch(err => console.error("Failed to fetch seat count:", err));
+    }
+    // Refresh every 5 seconds
+    setInterval(refreshSeatCount, 5000);
+</script>
 
 </body>
 </html>
