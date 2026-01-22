@@ -12,7 +12,7 @@ app.secret_key = "super_secret_key_change_this"
 ADMIN_PASSWORD = "admin123"                     
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, 'library.db')
-TOTAL_SEATS = 50
+# TOTAL_SEATS is now dynamic, removed global variable
 
 # --- TIMEZONE HELPER ---
 def get_sl_time():
@@ -24,21 +24,23 @@ def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         
-        # 1. Tables
+        # Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS status (id INTEGER PRIMARY KEY, available_seats INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff (uid TEXT PRIMARY KEY, name TEXT, is_present INTEGER, last_seen TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, event_type TEXT, user_type TEXT, occupancy INTEGER)''')
+        
+        # Settings Table (Stores System Status AND Total Capacity)
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
+        cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('total_capacity', '50')) # Default 50
 
-        # 2. Initial Data
+        # Initial Data
         cursor.execute('SELECT count(*) FROM status')
         if cursor.fetchone()[0] == 0:
-            cursor.execute('INSERT INTO status (id, available_seats) VALUES (1, ?)', (TOTAL_SEATS,))
+            cursor.execute('INSERT INTO status (id, available_seats) VALUES (1, 50)')
         
-        # 3. Default Staff (Card IDs)
         staff_list = [('CARD-001', 'Mr. Perera'), ('CARD-002', 'Ms. Silva'), ('CARD-003', 'Dr. Jayantha')]
         for uid, name in staff_list:
             cursor.execute('INSERT OR IGNORE INTO staff (uid, name, is_present, last_seen) VALUES (?, ?, 0, ?)', (uid, name, get_sl_time()))
@@ -51,6 +53,12 @@ def get_seats():
     with sqlite3.connect(DB_FILE) as conn:
         return conn.execute('SELECT available_seats FROM status WHERE id=1').fetchone()[0]
 
+def get_total_capacity():
+    """Fetches the Total Seat Limit from DB"""
+    with sqlite3.connect(DB_FILE) as conn:
+        row = conn.execute('SELECT value FROM settings WHERE key="total_capacity"').fetchone()
+        return int(row[0]) if row else 50
+
 def get_system_status():
     with sqlite3.connect(DB_FILE) as conn:
         row = conn.execute('SELECT value FROM settings WHERE key="system_status"').fetchone()
@@ -60,7 +68,8 @@ def get_system_status():
 @app.route('/')
 def dashboard():
     seats = get_seats()
-    occupancy = TOTAL_SEATS - seats
+    total = get_total_capacity()
+    occupancy = total - seats
     announcement = None
     system_status = get_system_status()
     
@@ -138,12 +147,20 @@ def admin_panel():
                 conn.execute('DELETE FROM announcements WHERE id = ?', (ann_id,))
             msg = "🗑️ Announcement Deleted"
 
+        # RESET CURRENT SEATS
         elif 'reset_seats' in request.form:
             target = int(request.form.get('seat_count'))
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('UPDATE status SET available_seats = ? WHERE id=1', (target,))
             msg = f"✅ Seats reset to {target}"
         
+        # NEW: UPDATE TOTAL CAPACITY
+        elif 'update_capacity' in request.form:
+            new_cap = int(request.form.get('total_capacity'))
+            with sqlite3.connect(DB_FILE) as conn:
+                conn.execute('UPDATE settings SET value = ? WHERE key="total_capacity"', (new_cap,))
+            msg = f"✅ Total Capacity updated to {new_cap}"
+
         elif 'delete_staff' in request.form:
             uid = request.form.get('staff_uid')
             with sqlite3.connect(DB_FILE) as conn:
@@ -171,6 +188,7 @@ def admin_panel():
             msg = "✅ System Status Updated"
 
     seats = get_seats()
+    total_capacity = get_total_capacity() # Fetch dynamic capacity
     system_status = get_system_status() 
 
     with sqlite3.connect(DB_FILE) as conn:
@@ -179,55 +197,45 @@ def admin_panel():
         all_reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
         all_announcements = conn.execute('SELECT * FROM announcements ORDER BY id DESC').fetchall()
 
-    return render_template('admin_panel.html', seats=seats, staff=all_staff, reservations=all_reservations, announcements=all_announcements, msg=msg, system_status=system_status)
+    return render_template('admin_panel.html', seats=seats, total_capacity=total_capacity, staff=all_staff, reservations=all_reservations, announcements=all_announcements, msg=msg, system_status=system_status)
 
 @app.route('/logout')
 def logout():
     session.pop('is_admin', None)
     return redirect(url_for('dashboard'))
 
-# --- IOT ROUTE (UPDATED TO HANDLE RFID) ---
+# --- IOT ROUTE ---
 @app.route('/update_data', methods=['POST'])
 def update_data():
     try:
         data = request.get_json(force=True, silent=True)
         if not data: return jsonify({"status": "error", "message": "No JSON data"}), 400
         
-        # Extract Data
         occupancy = int(data.get('occupancy', 0)) 
         event = data.get('event', "UPDATE")
         user = data.get('user', "STUDENT")
-        uid = data.get('uid', None) # New: Check for Card UID
+        uid = data.get('uid', None)
         
         now = get_sl_time()
+        total_limit = get_total_capacity() # Use dynamic limit
 
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
 
-            # 1. HANDLE STAFF (If UID is present)
             if uid:
                 is_present = 1 if event == "ENTRY" else 0
                 cursor.execute('UPDATE staff SET is_present = ?, last_seen = ? WHERE uid = ?', (is_present, now, uid))
-                
-                # Check if this UID belongs to a known staff member
                 cursor.execute('SELECT name FROM staff WHERE uid = ?', (uid,))
-                row = cursor.fetchone()
-                if row:
-                    user = "STAFF" # Override user type for logs
+                if cursor.fetchone(): user = "STAFF"
 
-            # 2. Update Seat Count (Only if NOT staff, or depending on your rules)
-            # For now, we assume Staff does NOT take up student seats.
-            # If you want staff to take seats, remove this "if user != 'STAFF'" check.
             if user != "STAFF":
-                new_available = max(0, TOTAL_SEATS - occupancy)
+                new_available = max(0, total_limit - occupancy)
                 cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
             
-            # 3. Log Event
             cursor.execute("INSERT INTO logs (timestamp, event_type, user_type, occupancy) VALUES (?, ?, ?, ?)", (now, event, user, occupancy))
-            
             conn.commit()
 
-        print(f"✅ SENSOR: {event} | User: {user} | Occ: {occupancy}")
+        print(f"✅ SENSOR: {event} | Occ: {occupancy}")
         return jsonify({"status": "success"}), 200
 
     except Exception as e:
