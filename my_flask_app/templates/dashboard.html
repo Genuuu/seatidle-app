@@ -37,16 +37,21 @@
         <div class="seat-counter" id="live-seats">{{ seats }}</div>
         <div class="label">Seats Available</div>
 
-        <div style="display: flex; gap: 15px; justify-content: center; margin-bottom: 30px;">
+        <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 30px;">
             
-            <div style="background: #f3f4f6; padding: 10px 15px; border-radius: 12px; width: 45%;">
-                <div style="font-size: 24px; font-weight: 800; color: #1f2937;">{{ occupancy }}</div>
-                <div style="font-size: 11px; color: #6b7280; font-weight: 700; text-transform: uppercase;">People Inside</div>
+            <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
+                <div style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ occupancy }}</div>
+                <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">People Inside</div>
             </div>
 
-            <div style="background: #f3f4f6; padding: 10px 15px; border-radius: 12px; width: 45%;">
-                <div style="font-size: 24px; font-weight: 800; color: #1f2937;">{{ staff_count }}</div>
-                <div style="font-size: 11px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Staff on Duty</div>
+            <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
+                <div style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ staff_count }}</div>
+                <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Staff on Duty</div>
+            </div>
+
+            <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
+                <div style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ res_count }}</div>
+                <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Reservations</div>
             </div>
 
         </div>
@@ -58,7 +63,7 @@
 </div>
 
 <script>
-    // Only refresh the seat count number now
+    // Only refresh the seat count number (The other boxes refresh on page reload)
     function refreshSeatCount() {
         fetch('/api/get_seat_count')
             .then(response => response.text())
