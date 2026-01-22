@@ -7,35 +7,6 @@
     <title>SeatIdle | Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <style>
-        /* New Styles for the Log Table */
-        .log-container {
-            margin-top: 20px;
-            background: white;
-            padding: 15px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            text-align: left;
-        }
-        .log-header {
-            font-size: 14px;
-            font-weight: 600;
-            color: #555;
-            margin-bottom: 10px;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 5px;
-        }
-        .log-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        .log-table th { text-align: left; color: #888; font-weight: 400; padding: 5px; }
-        .log-table td { padding: 8px 5px; border-bottom: 1px solid #f0f0f0; }
-        .badge-entry { color: #10b981; font-weight: bold; background: #d1fae5; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
-        .badge-exit { color: #ef4444; font-weight: bold; background: #fee2e2; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
-        .user-staff { color: #6366f1; font-weight: 600; }
-    </style>
 </head>
 <body>
 
@@ -46,6 +17,16 @@
     <div class="card center">
         <div style="font-size: 40px; margin-bottom: 10px;">🪑</div>
         <h1>SeatIdle</h1>
+
+        {% if system_status == 1 %}
+            <div style="background: #d1fae5; color: #065f46; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">
+                🟢 SYSTEM ONLINE
+            </div>
+        {% else %}
+            <div style="background: #fee2e2; color: #991b1b; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">
+                🔴 SYSTEM OFFLINE
+            </div>
+        {% endif %}
 
         {% if announcement %}
         <div class="announcement-bar">
@@ -58,45 +39,6 @@
 
         <a href="/reservations" class="btn btn-primary" style="margin-bottom: 10px;">📅 Book a Seat</a>
         <a href="/staff" class="btn btn-secondary">👨‍💼 View Staff On Duty</a>
-    </div>
-
-    <div class="log-container">
-        <div class="log-header">📊 Live Sensor Activity</div>
-        <table class="log-table">
-            <thead>
-                <tr>
-                    <th width="35%">Time</th>
-                    <th width="25%">Event</th>
-                    <th width="25%">User</th>
-                    <th width="15%">Count</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for log in logs %}
-                <tr>
-                    <td style="color:#666;">{{ log.timestamp.split(' ')[1] }}</td>
-                    
-                    <td>
-                        <span class="{{ 'badge-entry' if log.event_type == 'ENTRY' else 'badge-exit' }}">
-                            {{ log.event_type }}
-                        </span>
-                    </td>
-                    
-                    <td class="{{ 'user-staff' if log.user_type == 'STAFF' else '' }}">
-                        {{ log.user_type }}
-                    </td>
-                    
-                    <td style="font-weight:bold;">{{ log.occupancy }}</td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="4" style="text-align:center; padding: 15px; color: #999;">
-                        No activity recorded yet...
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
     </div>
 
 </div>
