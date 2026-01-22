@@ -24,13 +24,13 @@ def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         
-        # 1. Old Tables
+        # 1. Existing Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS status (id INTEGER PRIMARY KEY, available_seats INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff (uid TEXT PRIMARY KEY, name TEXT, is_present INTEGER, last_seen TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)''')
         
-        # 2. NEW Table for ESP32 Logs
+        # 2. Logs Table
         cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT,
@@ -39,9 +39,9 @@ def init_db():
             occupancy INTEGER
         )''')
 
-        # 3. NEW Table for System Settings (Online/Offline)
+        # 3. Settings Table for Online/Offline Button
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
-        # Default to "1" (Online)
+        # Default to "1" (Online) if missing
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
 
         # 4. Initial Data
@@ -61,12 +61,6 @@ def get_seats():
     with sqlite3.connect(DB_FILE) as conn:
         return conn.execute('SELECT available_seats FROM status WHERE id=1').fetchone()[0]
 
-def update_seats(change):
-    with sqlite3.connect(DB_FILE) as conn:
-        current = get_seats()
-        new_count = max(0, min(TOTAL_SEATS, current + change))
-        conn.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_count,))
-
 def get_system_status():
     """Returns 1 for Online, 0 for Offline"""
     with sqlite3.connect(DB_FILE) as conn:
@@ -78,15 +72,12 @@ def get_system_status():
 def dashboard():
     seats = get_seats()
     announcement = None
-    system_status = get_system_status() # <--- Get Status
+    system_status = get_system_status() # Get Status
     
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
-        # Get latest announcement
         row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         if row: announcement = row[0]
-        
-        # Get latest 50 logs for the History Table
         logs = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 50').fetchall()
 
     return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, system_status=system_status)
@@ -181,7 +172,7 @@ def admin_panel():
                 conn.execute('DELETE FROM reservations WHERE otp = ?', (otp,))
             msg = "🗑️ Reservation deleted."
 
-        # NEW: Toggle Online/Offline Status
+        # Button Logic to Toggle Online/Offline
         elif 'toggle_status' in request.form:
             current = get_system_status()
             new_val = '0' if current == 1 else '1'
@@ -190,7 +181,7 @@ def admin_panel():
             msg = "✅ System Status Updated"
 
     seats = get_seats()
-    system_status = get_system_status() # <--- Get Status for display
+    system_status = get_system_status() 
 
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
@@ -205,54 +196,49 @@ def logout():
     session.pop('is_admin', None)
     return redirect(url_for('dashboard'))
 
-# --- IOT ROUTE (Safe & Robust) ---
+# --- IOT ROUTE ---
 @app.route('/update_data', methods=['POST'])
 def update_data():
-    """Receives JSON data from ESP32."""
     try:
-        # 1. Receive Data safely
         data = request.get_json(force=True, silent=True)
-        if not data:
-            return jsonify({"status": "error", "message": "No JSON data received"}), 400
+        if not data: return jsonify({"status": "error", "message": "No JSON data"}), 400
         
-        # 2. Extract values with default fallbacks
         occupancy = int(data.get('occupancy', 0)) 
         event = data.get('event', "UPDATE")
         user = data.get('user', "STUDENT")
-        
         now = get_sl_time()
 
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            
-            # 3. Update the Dashboard Counter
             new_available = max(0, TOTAL_SEATS - occupancy)
             cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
-            
-            # 4. Log the Event
-            cursor.execute("INSERT INTO logs (timestamp, event_type, user_type, occupancy) VALUES (?, ?, ?, ?)",
-                           (now, event, user, occupancy))
-            
+            cursor.execute("INSERT INTO logs (timestamp, event_type, user_type, occupancy) VALUES (?, ?, ?, ?)", (now, event, user, occupancy))
             conn.commit()
 
-        print(f"✅ SENSOR UPDATE: {occupancy} Occupied | {new_available} Free")
-        return jsonify({
-            "status": "success", 
-            "seats_available": new_available,
-            "logged_at": now
-        }), 200
+        print(f"✅ SENSOR: {occupancy} Occ | {new_available} Free")
+        return jsonify({"status": "success", "seats_available": new_available}), 200
 
-    except ValueError:
-        return jsonify({"status": "error", "message": "Occupancy must be a number"}), 400
     except Exception as e:
-        print(f"❌ SERVER ERROR: {e}")
+        print(f"❌ ERROR: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- OLD API ROUTES ---
+# --- API ROUTES ---
+
 @app.route('/api/get_seat_count')
 def get_seat_count():
     if 'is_admin' not in session: return "Access Denied", 403
     return str(get_seats())
+
+# THIS WAS MISSING - FIXES THE "NOT FOUND" ERROR
+@app.route('/api/get_reservations_table')
+def get_reservations_table():
+    if 'is_admin' not in session: return "Access Denied", 403
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
+        
+    return render_template('_table_rows.html', reservations=reservations)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
