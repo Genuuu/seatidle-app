@@ -39,7 +39,12 @@ def init_db():
             occupancy INTEGER
         )''')
 
-        # 3. Initial Data
+        # 3. NEW Table for System Settings (Online/Offline)
+        cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
+        # Default to "1" (Online)
+        cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
+
+        # 4. Initial Data
         cursor.execute('SELECT count(*) FROM status')
         if cursor.fetchone()[0] == 0:
             cursor.execute('INSERT INTO status (id, available_seats) VALUES (1, ?)', (TOTAL_SEATS,))
@@ -62,11 +67,18 @@ def update_seats(change):
         new_count = max(0, min(TOTAL_SEATS, current + change))
         conn.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_count,))
 
+def get_system_status():
+    """Returns 1 for Online, 0 for Offline"""
+    with sqlite3.connect(DB_FILE) as conn:
+        row = conn.execute('SELECT value FROM settings WHERE key="system_status"').fetchone()
+        return int(row[0]) if row else 1
+
 # --- PUBLIC ROUTES ---
 @app.route('/')
 def dashboard():
     seats = get_seats()
     announcement = None
+    system_status = get_system_status() # <--- Get Status
     
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
@@ -74,10 +86,10 @@ def dashboard():
         row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         if row: announcement = row[0]
         
-        # NEW: Get latest 50 logs for the History Table
+        # Get latest 50 logs for the History Table
         logs = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 50').fetchall()
 
-    return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs)
+    return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, system_status=system_status)
 
 @app.route('/staff')
 def staff_view():
@@ -169,59 +181,74 @@ def admin_panel():
                 conn.execute('DELETE FROM reservations WHERE otp = ?', (otp,))
             msg = "🗑️ Reservation deleted."
 
+        # NEW: Toggle Online/Offline Status
+        elif 'toggle_status' in request.form:
+            current = get_system_status()
+            new_val = '0' if current == 1 else '1'
+            with sqlite3.connect(DB_FILE) as conn:
+                conn.execute('UPDATE settings SET value = ? WHERE key="system_status"', (new_val,))
+            msg = "✅ System Status Updated"
+
     seats = get_seats()
+    system_status = get_system_status() # <--- Get Status for display
+
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         all_staff = conn.execute('SELECT * FROM staff').fetchall()
         all_reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
         all_announcements = conn.execute('SELECT * FROM announcements ORDER BY id DESC').fetchall()
 
-    return render_template('admin_panel.html', seats=seats, staff=all_staff, reservations=all_reservations, announcements=all_announcements, msg=msg)
+    return render_template('admin_panel.html', seats=seats, staff=all_staff, reservations=all_reservations, announcements=all_announcements, msg=msg, system_status=system_status)
 
 @app.route('/logout')
 def logout():
     session.pop('is_admin', None)
     return redirect(url_for('dashboard'))
 
-# --- NEW IOT ROUTE (Connects with ESP32) ---
+# --- IOT ROUTE (Safe & Robust) ---
 @app.route('/update_data', methods=['POST'])
 def update_data():
     """Receives JSON data from ESP32."""
     try:
-        data = request.get_json()
+        # 1. Receive Data safely
+        data = request.get_json(force=True, silent=True)
+        if not data:
+            return jsonify({"status": "error", "message": "No JSON data received"}), 400
         
-        # Extract data from ESP32
-        occupancy = data.get('occupancy') # ESP32 sends total people inside
-        event = data.get('event')         # "ENTRY" or "EXIT"
-        user = data.get('user')           # "STUDENT" or "STAFF"
+        # 2. Extract values with default fallbacks
+        occupancy = int(data.get('occupancy', 0)) 
+        event = data.get('event', "UPDATE")
+        user = data.get('user', "STUDENT")
         
-        # Timestamp
         now = get_sl_time()
 
-        # 1. Save to Logs History
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
+            
+            # 3. Update the Dashboard Counter
+            new_available = max(0, TOTAL_SEATS - occupancy)
+            cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
+            
+            # 4. Log the Event
             cursor.execute("INSERT INTO logs (timestamp, event_type, user_type, occupancy) VALUES (?, ?, ?, ?)",
                            (now, event, user, occupancy))
             
-            # 2. Update the "Available Seats" automatically
-            # If someone entered, seats decrease. If exit, seats increase.
-            # We calculate this: TOTAL_SEATS - Occupancy
-            new_available = max(0, TOTAL_SEATS - int(occupancy))
-            cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
-            
             conn.commit()
 
-        print(f"✅ RECEIVED: {event} | Occ: {occupancy}")
-        return jsonify({"status": "success"}), 200
+        print(f"✅ SENSOR UPDATE: {occupancy} Occupied | {new_available} Free")
+        return jsonify({
+            "status": "success", 
+            "seats_available": new_available,
+            "logged_at": now
+        }), 200
 
+    except ValueError:
+        return jsonify({"status": "error", "message": "Occupancy must be a number"}), 400
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"❌ SERVER ERROR: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- OLD API ROUTES (Legacy Support) ---
-# Kept these in case you still use the API for testing manually
-
+# --- OLD API ROUTES ---
 @app.route('/api/get_seat_count')
 def get_seat_count():
     if 'is_admin' not in session: return "Access Denied", 403
