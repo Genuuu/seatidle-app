@@ -12,7 +12,7 @@ app.secret_key = "super_secret_key_change_this"
 ADMIN_PASSWORD = "admin123"                     
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, 'library.db')
-# TOTAL_SEATS is now dynamic, removed global variable
+# TOTAL_SEATS is dynamic now (fetched from DB), so no global variable here.
 
 # --- TIMEZONE HELPER ---
 def get_sl_time():
@@ -24,23 +24,24 @@ def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         
-        # Tables
+        # 1. Standard Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS status (id INTEGER PRIMARY KEY, available_seats INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff (uid TEXT PRIMARY KEY, name TEXT, is_present INTEGER, last_seen TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, event_type TEXT, user_type TEXT, occupancy INTEGER)''')
         
-        # Settings Table (Stores System Status AND Total Capacity)
+        # 2. Settings Table (For Online/Offline & Total Capacity)
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('total_capacity', '50')) # Default 50
 
-        # Initial Data
+        # 3. Initial Status Data
         cursor.execute('SELECT count(*) FROM status')
         if cursor.fetchone()[0] == 0:
             cursor.execute('INSERT INTO status (id, available_seats) VALUES (1, 50)')
         
+        # 4. Default Staff
         staff_list = [('CARD-001', 'Mr. Perera'), ('CARD-002', 'Ms. Silva'), ('CARD-003', 'Dr. Jayantha')]
         for uid, name in staff_list:
             cursor.execute('INSERT OR IGNORE INTO staff (uid, name, is_present, last_seen) VALUES (?, ?, 0, ?)', (uid, name, get_sl_time()))
@@ -60,6 +61,7 @@ def get_total_capacity():
         return int(row[0]) if row else 50
 
 def get_system_status():
+    """Returns 1 for Online, 0 for Offline"""
     with sqlite3.connect(DB_FILE) as conn:
         row = conn.execute('SELECT value FROM settings WHERE key="system_status"').fetchone()
         return int(row[0]) if row else 1
@@ -69,7 +71,10 @@ def get_system_status():
 def dashboard():
     seats = get_seats()
     total = get_total_capacity()
-    occupancy = total - seats
+    
+    # Calculate Occupancy
+    occupancy = max(0, total - seats)
+    
     announcement = None
     system_status = get_system_status()
     
@@ -147,19 +152,31 @@ def admin_panel():
                 conn.execute('DELETE FROM announcements WHERE id = ?', (ann_id,))
             msg = "🗑️ Announcement Deleted"
 
-        # RESET CURRENT SEATS
+        # RESET CURRENT SEATS (Manual Override)
         elif 'reset_seats' in request.form:
             target = int(request.form.get('seat_count'))
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('UPDATE status SET available_seats = ? WHERE id=1', (target,))
             msg = f"✅ Seats reset to {target}"
         
-        # NEW: UPDATE TOTAL CAPACITY
+        # CORRECTED: UPDATE TOTAL CAPACITY (Preserving Occupancy Logic)
         elif 'update_capacity' in request.form:
-            new_cap = int(request.form.get('total_capacity'))
+            new_total = int(request.form.get('total_capacity'))
+            
+            # Get current state
+            current_seats = get_seats()
+            old_total = get_total_capacity()
+            
+            # Calculate actual people inside
+            people_inside = max(0, old_total - current_seats)
+            
+            # Calculate NEW available seats to keep occupancy correct
+            new_available = max(0, new_total - people_inside)
+            
             with sqlite3.connect(DB_FILE) as conn:
-                conn.execute('UPDATE settings SET value = ? WHERE key="total_capacity"', (new_cap,))
-            msg = f"✅ Total Capacity updated to {new_cap}"
+                conn.execute('UPDATE settings SET value = ? WHERE key="total_capacity"', (new_total,))
+                conn.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
+            msg = f"✅ Capacity updated to {new_total}. (People inside kept at {people_inside})"
 
         elif 'delete_staff' in request.form:
             uid = request.form.get('staff_uid')
@@ -188,7 +205,7 @@ def admin_panel():
             msg = "✅ System Status Updated"
 
     seats = get_seats()
-    total_capacity = get_total_capacity() # Fetch dynamic capacity
+    total_capacity = get_total_capacity() 
     system_status = get_system_status() 
 
     with sqlite3.connect(DB_FILE) as conn:
@@ -204,7 +221,7 @@ def logout():
     session.pop('is_admin', None)
     return redirect(url_for('dashboard'))
 
-# --- IOT ROUTE ---
+# --- IOT ROUTE (Smart Logic) ---
 @app.route('/update_data', methods=['POST'])
 def update_data():
     try:
@@ -222,12 +239,14 @@ def update_data():
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
 
+            # Handle Staff
             if uid:
                 is_present = 1 if event == "ENTRY" else 0
                 cursor.execute('UPDATE staff SET is_present = ?, last_seen = ? WHERE uid = ?', (is_present, now, uid))
                 cursor.execute('SELECT name FROM staff WHERE uid = ?', (uid,))
                 if cursor.fetchone(): user = "STAFF"
 
+            # Handle Student Seat Count
             if user != "STAFF":
                 new_available = max(0, total_limit - occupancy)
                 cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
@@ -256,7 +275,7 @@ def get_reservations_table():
         reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
     return render_template('_table_rows.html', reservations=reservations)
 
-# --- VIRTUAL SIMULATOR (NEW) ---
+# --- VIRTUAL SIMULATOR ---
 @app.route('/simulator')
 def simulator():
     return """
@@ -272,21 +291,17 @@ def simulator():
             .container { background: #1f2937; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; width: 350px; }
             h1 { margin-bottom: 5px; color: #60a5fa; }
             h3 { margin-top: 0; color: #9ca3af; font-weight: 400; font-size: 14px; margin-bottom: 30px; }
-            
             .counter-box { background: #374151; padding: 20px; border-radius: 12px; margin-bottom: 30px; }
             .count { font-size: 60px; font-weight: 800; }
             .label { color: #9ca3af; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
-
             .btn-group { display: flex; gap: 10px; margin-bottom: 30px; }
             button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; transition: 0.1s; }
             .btn-entry { background: #10b981; color: white; }
             .btn-exit { background: #ef4444; color: white; }
             .btn-rfid { background: #8b5cf6; color: white; width: 100%; margin-top: 5px;}
             button:active { transform: scale(0.96); opacity: 0.9; }
-
             input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #4b5563; background: #374151; color: white; margin-bottom: 10px; box-sizing: border-box; text-align: center;}
             .section-title { text-align: left; color: #d1d5db; font-weight: 600; margin-bottom: 10px; font-size: 14px; }
-            
             #status { margin-top: 20px; color: #6b7280; font-family: monospace; font-size: 12px; }
         </style>
     </head>
@@ -329,8 +344,6 @@ def simulator():
             function scanRFID(eventType) {
                 let uid = document.getElementById('rfid-input').value;
                 if(!uid) { alert("Please enter a Card ID!"); return; }
-                
-                // Note: Staff entry usually doesn't increase student count
                 sendData(localCount, eventType, "STAFF", uid);
             }
 
@@ -361,3 +374,6 @@ def simulator():
     </body>
     </html>
     """
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
