@@ -24,30 +24,21 @@ def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         
-        # 1. Existing Tables
+        # 1. Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS status (id INTEGER PRIMARY KEY, available_seats INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff (uid TEXT PRIMARY KEY, name TEXT, is_present INTEGER, last_seen TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)''')
-        
-        # 2. Logs Table
-        cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            event_type TEXT,
-            user_type TEXT,
-            occupancy INTEGER
-        )''')
-
-        # 3. Settings Table
+        cursor.execute('''CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, event_type TEXT, user_type TEXT, occupancy INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
 
-        # 4. Initial Data
+        # 2. Initial Data
         cursor.execute('SELECT count(*) FROM status')
         if cursor.fetchone()[0] == 0:
             cursor.execute('INSERT INTO status (id, available_seats) VALUES (1, ?)', (TOTAL_SEATS,))
         
+        # 3. Default Staff (Card IDs)
         staff_list = [('CARD-001', 'Mr. Perera'), ('CARD-002', 'Ms. Silva'), ('CARD-003', 'Dr. Jayantha')]
         for uid, name in staff_list:
             cursor.execute('INSERT OR IGNORE INTO staff (uid, name, is_present, last_seen) VALUES (?, ?, 0, ?)', (uid, name, get_sl_time()))
@@ -61,7 +52,6 @@ def get_seats():
         return conn.execute('SELECT available_seats FROM status WHERE id=1').fetchone()[0]
 
 def get_system_status():
-    """Returns 1 for Online, 0 for Offline"""
     with sqlite3.connect(DB_FILE) as conn:
         row = conn.execute('SELECT value FROM settings WHERE key="system_status"').fetchone()
         return int(row[0]) if row else 1
@@ -70,10 +60,7 @@ def get_system_status():
 @app.route('/')
 def dashboard():
     seats = get_seats()
-    
-    # 1. NEW: Calculate Occupancy (Total - Available)
     occupancy = TOTAL_SEATS - seats
-    
     announcement = None
     system_status = get_system_status()
     
@@ -82,11 +69,8 @@ def dashboard():
         row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         if row: announcement = row[0]
         logs = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 50').fetchall()
-
-        # 2. NEW: Count Active Staff
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
 
-    # Pass new variables (occupancy, staff_count) to the HTML
     return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, system_status=system_status, occupancy=occupancy, staff_count=staff_count)
 
 @app.route('/staff')
@@ -202,27 +186,49 @@ def logout():
     session.pop('is_admin', None)
     return redirect(url_for('dashboard'))
 
-# --- IOT ROUTE ---
+# --- IOT ROUTE (UPDATED TO HANDLE RFID) ---
 @app.route('/update_data', methods=['POST'])
 def update_data():
     try:
         data = request.get_json(force=True, silent=True)
         if not data: return jsonify({"status": "error", "message": "No JSON data"}), 400
         
+        # Extract Data
         occupancy = int(data.get('occupancy', 0)) 
         event = data.get('event', "UPDATE")
         user = data.get('user', "STUDENT")
+        uid = data.get('uid', None) # New: Check for Card UID
+        
         now = get_sl_time()
 
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            new_available = max(0, TOTAL_SEATS - occupancy)
-            cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
+
+            # 1. HANDLE STAFF (If UID is present)
+            if uid:
+                is_present = 1 if event == "ENTRY" else 0
+                cursor.execute('UPDATE staff SET is_present = ?, last_seen = ? WHERE uid = ?', (is_present, now, uid))
+                
+                # Check if this UID belongs to a known staff member
+                cursor.execute('SELECT name FROM staff WHERE uid = ?', (uid,))
+                row = cursor.fetchone()
+                if row:
+                    user = "STAFF" # Override user type for logs
+
+            # 2. Update Seat Count (Only if NOT staff, or depending on your rules)
+            # For now, we assume Staff does NOT take up student seats.
+            # If you want staff to take seats, remove this "if user != 'STAFF'" check.
+            if user != "STAFF":
+                new_available = max(0, TOTAL_SEATS - occupancy)
+                cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
+            
+            # 3. Log Event
             cursor.execute("INSERT INTO logs (timestamp, event_type, user_type, occupancy) VALUES (?, ?, ?, ?)", (now, event, user, occupancy))
+            
             conn.commit()
 
-        print(f"✅ SENSOR: {occupancy} Occ | {new_available} Free")
-        return jsonify({"status": "success", "seats_available": new_available}), 200
+        print(f"✅ SENSOR: {event} | User: {user} | Occ: {occupancy}")
+        return jsonify({"status": "success"}), 200
 
     except Exception as e:
         print(f"❌ ERROR: {e}")
@@ -242,70 +248,108 @@ def get_reservations_table():
         reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
     return render_template('_table_rows.html', reservations=reservations)
 
-# --- VIRTUAL HARDWARE SIMULATOR ---
+# --- VIRTUAL SIMULATOR (NEW) ---
 @app.route('/simulator')
 def simulator():
     return """
-    <html>
+    <!DOCTYPE html>
+    <html lang="en">
     <head>
-        <title>Virtual ESP32</title>
+        <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SeatIdle Simulator</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
         <style>
-            body { font-family: sans-serif; text-align: center; padding: 50px; background: #222; color: white; }
-            .box { background: #333; padding: 30px; border-radius: 20px; display: inline-block; }
-            h1 { margin: 0 0 20px 0; }
-            button { padding: 20px 40px; font-size: 20px; border: none; border-radius: 10px; cursor: pointer; margin: 10px; font-weight: bold; }
-            .btn-green { background: #10b981; color: white; }
-            .btn-red { background: #ef4444; color: white; }
-            .btn-green:active, .btn-red:active { transform: scale(0.95); opacity: 0.8; }
-            #status { margin-top: 20px; color: #aaa; font-family: monospace; }
+            body { font-family: 'Inter', sans-serif; background: #111827; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .container { background: #1f2937; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; width: 350px; }
+            h1 { margin-bottom: 5px; color: #60a5fa; }
+            h3 { margin-top: 0; color: #9ca3af; font-weight: 400; font-size: 14px; margin-bottom: 30px; }
+            
+            .counter-box { background: #374151; padding: 20px; border-radius: 12px; margin-bottom: 30px; }
+            .count { font-size: 60px; font-weight: 800; }
+            .label { color: #9ca3af; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+
+            .btn-group { display: flex; gap: 10px; margin-bottom: 30px; }
+            button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; transition: 0.1s; }
+            .btn-entry { background: #10b981; color: white; }
+            .btn-exit { background: #ef4444; color: white; }
+            .btn-rfid { background: #8b5cf6; color: white; width: 100%; margin-top: 5px;}
+            button:active { transform: scale(0.96); opacity: 0.9; }
+
+            input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #4b5563; background: #374151; color: white; margin-bottom: 10px; box-sizing: border-box; text-align: center;}
+            .section-title { text-align: left; color: #d1d5db; font-weight: 600; margin-bottom: 10px; font-size: 14px; }
+            
+            #status { margin-top: 20px; color: #6b7280; font-family: monospace; font-size: 12px; }
         </style>
     </head>
     <body>
-        <div class="box">
+        <div class="container">
             <h1>🤖 Virtual ESP32</h1>
-            <div style="font-size: 60px; font-weight: bold; margin-bottom: 20px;" id="count-display">0</div>
-            <button class="btn-green" onclick="update(1)">+ ENTRY</button>
-            <button class="btn-red" onclick="update(-1)">- EXIT</button>
+            <h3>Hardware Simulator</h3>
+
+            <div class="section-title">👥 CROWD SENSORS</div>
+            <div class="counter-box">
+                <div class="count" id="count-display">0</div>
+                <div class="label">People Inside</div>
+            </div>
+            <div class="btn-group">
+                <button class="btn-entry" onclick="updateCount(1)">+ ENTRY</button>
+                <button class="btn-exit" onclick="updateCount(-1)">- EXIT</button>
+            </div>
+
+            <div class="section-title">💳 RFID READER (STAFF)</div>
+            <input type="text" id="rfid-input" placeholder="Scan Card (e.g. CARD-001)">
+            <div class="btn-group">
+                <button class="btn-rfid" onclick="scanRFID('ENTRY')">Scan Entry</button>
+                <button class="btn-rfid" style="background:#6366f1" onclick="scanRFID('EXIT')">Scan Exit</button>
+            </div>
+
             <div id="status">Ready to simulate...</div>
         </div>
 
         <script>
-            let localCount = 0; // Mimics the ESP32's internal counter
+            let localCount = 0;
 
-            function update(change) {
-                // 1. Update Local "Sensor" Count
+            function updateCount(change) {
                 localCount += change;
-                if (localCount < 0) localCount = 0;
+                if(localCount < 0) localCount = 0;
                 document.getElementById('count-display').innerText = localCount;
-
-                // 2. Determine Event Type
                 let eventType = change > 0 ? "ENTRY" : "EXIT";
+                sendData(localCount, eventType, "STUDENT", null);
+            }
 
-                // 3. Send Data to Server (Just like ESP32)
-                document.getElementById('status').innerText = "Sending...";
+            function scanRFID(eventType) {
+                let uid = document.getElementById('rfid-input').value;
+                if(!uid) { alert("Please enter a Card ID!"); return; }
+                
+                // Note: Staff entry usually doesn't increase student count
+                sendData(localCount, eventType, "STAFF", uid);
+            }
+
+            function sendData(occ, evt, usr, uid) {
+                document.getElementById('status').innerText = "Sending " + evt + "...";
                 
                 fetch('/update_data', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        occupancy: localCount,
-                        event: eventType,
-                        user: "SIMULATOR"
+                        occupancy: occ,
+                        event: evt,
+                        user: usr,
+                        uid: uid
                     })
                 })
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('status').innerText = "✅ Server Updated: " + data.seats_available + " seats left";
+                .then(r => r.json())
+                .then(d => {
+                    document.getElementById('status').innerText = "✅ Sent: " + evt + " | " + (uid ? uid : "Student");
+                    if(d.status === 'error') alert(d.message);
                 })
-                .catch(err => {
-                    document.getElementById('status').innerText = "❌ Error: " + err;
+                .catch(e => {
+                    document.getElementById('status').innerText = "❌ Error";
+                    console.error(e);
                 });
             }
         </script>
     </body>
     </html>
     """
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
