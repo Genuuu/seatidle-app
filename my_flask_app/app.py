@@ -39,9 +39,8 @@ def init_db():
             occupancy INTEGER
         )''')
 
-        # 3. Settings Table for Online/Offline Button
+        # 3. Settings Table
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
-        # Default to "1" (Online) if missing
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
 
         # 4. Initial Data
@@ -71,8 +70,12 @@ def get_system_status():
 @app.route('/')
 def dashboard():
     seats = get_seats()
+    
+    # 1. NEW: Calculate Occupancy (Total - Available)
+    occupancy = TOTAL_SEATS - seats
+    
     announcement = None
-    system_status = get_system_status() # Get Status
+    system_status = get_system_status()
     
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
@@ -80,7 +83,11 @@ def dashboard():
         if row: announcement = row[0]
         logs = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 50').fetchall()
 
-    return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, system_status=system_status)
+        # 2. NEW: Count Active Staff
+        staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
+
+    # Pass new variables (occupancy, staff_count) to the HTML
+    return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, system_status=system_status, occupancy=occupancy, staff_count=staff_count)
 
 @app.route('/staff')
 def staff_view():
@@ -172,7 +179,6 @@ def admin_panel():
                 conn.execute('DELETE FROM reservations WHERE otp = ?', (otp,))
             msg = "🗑️ Reservation deleted."
 
-        # Button Logic to Toggle Online/Offline
         elif 'toggle_status' in request.form:
             current = get_system_status()
             new_val = '0' if current == 1 else '1'
@@ -223,22 +229,83 @@ def update_data():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # --- API ROUTES ---
-
 @app.route('/api/get_seat_count')
 def get_seat_count():
     if 'is_admin' not in session: return "Access Denied", 403
     return str(get_seats())
 
-# THIS WAS MISSING - FIXES THE "NOT FOUND" ERROR
 @app.route('/api/get_reservations_table')
 def get_reservations_table():
     if 'is_admin' not in session: return "Access Denied", 403
-    
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
-        
     return render_template('_table_rows.html', reservations=reservations)
+
+# --- VIRTUAL HARDWARE SIMULATOR ---
+@app.route('/simulator')
+def simulator():
+    return """
+    <html>
+    <head>
+        <title>Virtual ESP32</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body { font-family: sans-serif; text-align: center; padding: 50px; background: #222; color: white; }
+            .box { background: #333; padding: 30px; border-radius: 20px; display: inline-block; }
+            h1 { margin: 0 0 20px 0; }
+            button { padding: 20px 40px; font-size: 20px; border: none; border-radius: 10px; cursor: pointer; margin: 10px; font-weight: bold; }
+            .btn-green { background: #10b981; color: white; }
+            .btn-red { background: #ef4444; color: white; }
+            .btn-green:active, .btn-red:active { transform: scale(0.95); opacity: 0.8; }
+            #status { margin-top: 20px; color: #aaa; font-family: monospace; }
+        </style>
+    </head>
+    <body>
+        <div class="box">
+            <h1>🤖 Virtual ESP32</h1>
+            <div style="font-size: 60px; font-weight: bold; margin-bottom: 20px;" id="count-display">0</div>
+            <button class="btn-green" onclick="update(1)">+ ENTRY</button>
+            <button class="btn-red" onclick="update(-1)">- EXIT</button>
+            <div id="status">Ready to simulate...</div>
+        </div>
+
+        <script>
+            let localCount = 0; // Mimics the ESP32's internal counter
+
+            function update(change) {
+                // 1. Update Local "Sensor" Count
+                localCount += change;
+                if (localCount < 0) localCount = 0;
+                document.getElementById('count-display').innerText = localCount;
+
+                // 2. Determine Event Type
+                let eventType = change > 0 ? "ENTRY" : "EXIT";
+
+                // 3. Send Data to Server (Just like ESP32)
+                document.getElementById('status').innerText = "Sending...";
+                
+                fetch('/update_data', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        occupancy: localCount,
+                        event: eventType,
+                        user: "SIMULATOR"
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('status').innerText = "✅ Server Updated: " + data.seats_available + " seats left";
+                })
+                .catch(err => {
+                    document.getElementById('status').innerText = "❌ Error: " + err;
+                });
+            }
+        </script>
+    </body>
+    </html>
+    """
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
