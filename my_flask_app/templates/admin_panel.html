@@ -24,14 +24,11 @@
     <div class="card">
         <h3>🔌 System Power</h3>
         <div style="display: flex; align-items: center; justify-content: space-between; background: #f9fafb; padding: 15px; border-radius: 12px;">
+            
             <div style="font-size: 16px; font-weight: 600;">
-                Current Status: 
-                {% if system_status == 1 %}
-                    <span style="color: #10b981;">🟢 Online</span>
-                {% else %}
-                    <span style="color: #ef4444;">🔴 Offline</span>
-                {% endif %}
+                Current Status: <span id="status-badge">Loading...</span>
             </div>
+
             <form method="POST" style="margin: 0;">
                 <input type="hidden" name="toggle_status" value="true">
                 {% if system_status == 1 %}
@@ -56,7 +53,7 @@
         </div>
 
         <div style="display: flex; align-items: center; gap: 20px;">
-            <div style="font-size: 16px; width: 150px;">Total Capacity: <strong>{{ total_capacity }}</strong></div>
+            <div style="font-size: 16px; width: 150px;">Total Capacity: <strong id="total-cap">{{ total_capacity }}</strong></div>
             <form method="POST" style="flex: 1; display: flex; gap: 10px;">
                 <input type="hidden" name="update_capacity" value="true">
                 <input type="number" name="total_capacity" placeholder="Set Max Capacity" value="{{ total_capacity }}" required style="margin: 0;">
@@ -104,24 +101,12 @@
         </form>
 
         <table>
-            <tr><th>UID</th><th>Name</th><th>Status</th><th>Actions</th></tr>
-            {% for person in staff %}
-            <tr>
-                <td><code style="background: #f3f4f6; padding: 4px;">{{ person['uid'] }}</code></td>
-                <td><strong>{{ person['name'] }}</strong></td>
-                <td>
-                    {% if person['is_present'] %}<span class="badge badge-green">IN</span>{% else %}<span class="badge badge-gray">OUT</span>{% endif %}
-                </td>
-                <td>
-                    <a href="/admin/edit_staff/{{ person['uid'] }}" class="btn btn-warning btn-sm" style="text-decoration:none;">Edit</a>
-                    <form method="POST" onsubmit="return confirm('Delete {{ person.name }}?');" style="display:inline;">
-                        <input type="hidden" name="delete_staff" value="true">
-                        <input type="hidden" name="staff_uid" value="{{ person['uid'] }}">
-                        <button type="submit" class="btn btn-danger btn-sm">Del</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
+            <thead>
+                <tr><th>UID</th><th>Name</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="staff-table-body">
+                {% include '_staff_rows.html' %}
+            </tbody>
         </table>
     </div>
 
@@ -139,16 +124,36 @@
 </div>
 
 <script>
-    function refreshDashboard() {
+    function refreshAdminPanel() {
+        // 1. Update Numbers & Status
+        fetch('/api/admin_stats')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('live-seats').innerText = data.seats;
+                document.getElementById('total-cap').innerText = data.total_capacity;
+                const badge = document.getElementById('status-badge');
+                if (data.system_status == 1) {
+                    badge.innerHTML = '<span style="color: #10b981;">🟢 Online</span>';
+                } else {
+                    badge.innerHTML = '<span style="color: #ef4444;">🔴 Offline</span>';
+                }
+            });
+
+        // 2. Update Reservations Table
         fetch('/api/get_reservations_table')
-            .then(response => response.text())
+            .then(r => r.text())
             .then(html => { document.getElementById('live-table').innerHTML = html; });
 
-        fetch('/api/get_seat_count')
-            .then(response => response.text())
-            .then(count => { document.getElementById('live-seats').innerText = count; });
+        // 3. Update Staff Table
+        fetch('/api/get_staff_table')
+            .then(r => r.text())
+            .then(html => { document.getElementById('staff-table-body').innerHTML = html; });
     }
-    setInterval(refreshDashboard, 5000);
+
+    // Refresh every 2 seconds
+    setInterval(refreshAdminPanel, 2000);
+    
+    refreshAdminPanel(); // Run immediately
 </script>
 
 </body>
