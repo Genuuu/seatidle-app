@@ -6,6 +6,22 @@
     <title>SeatIdle | Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* NEW: Modern Notification Design */
+        #notice-box {
+            display: none; /* Hidden by default */
+            background: #eff6ff;
+            border-left: 5px solid #3b82f6;
+            color: #1e40af;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            text-align: left;
+            animation: fadeIn 0.5s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
 </head>
 <body>
 
@@ -18,22 +34,20 @@
         <h1>SeatIdle</h1>
 
         <div id="status-badge-container">
-            {% if system_status == 1 %}
-                <div style="background: #d1fae5; color: #065f46; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">
-                    🟢 SYSTEM ONLINE
-                </div>
-            {% else %}
-                <div style="background: #fee2e2; color: #991b1b; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">
-                    🔴 SYSTEM OFFLINE
-                </div>
-            {% endif %}
+            <div style="background: #f3f4f6; color: #9ca3af; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">
+                Connecting...
+            </div>
         </div>
 
-        {% if announcement %}
-        <div class="announcement-bar">
-            <strong>📢 NOTICE:</strong> {{ announcement }}
+        <div id="notice-box">
+            <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <span style="font-size: 20px;">📢</span>
+                <div>
+                    <strong style="display: block; font-size: 12px; text-transform: uppercase; opacity: 0.8; margin-bottom: 2px;">Notice Board</strong>
+                    <span id="notice-text" style="font-weight: 600; font-size: 15px;"></span>
+                </div>
+            </div>
         </div>
-        {% endif %}
         
         <div class="seat-counter" id="live-seats">{{ seats }}</div>
         <div class="label">Seats Available</div>
@@ -42,7 +56,7 @@
             
             <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
                 <div id="live-occupancy" style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ occupancy }}</div>
-                <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Library Users</div>
+                <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">People Inside</div>
             </div>
 
             <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
@@ -74,12 +88,23 @@
                 document.getElementById('live-staff').innerText = data.staff;
                 document.getElementById('live-res').innerText = data.reservations;
 
-                // 2. Update Status Badge (Correctly uses data.system_status)
+                // 2. Update Status Badge
                 const badgeContainer = document.getElementById('status-badge-container');
                 if (data.system_status == 1) {
                     badgeContainer.innerHTML = '<div style="background: #d1fae5; color: #065f46; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">🟢 SYSTEM ONLINE</div>';
                 } else {
                     badgeContainer.innerHTML = '<div style="background: #fee2e2; color: #991b1b; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">🔴 SYSTEM OFFLINE</div>';
+                }
+
+                // 3. Update Announcement (Show if exists, Hide if null)
+                const noticeBox = document.getElementById('notice-box');
+                const noticeText = document.getElementById('notice-text');
+                
+                if (data.announcement) {
+                    noticeText.innerText = data.announcement;
+                    noticeBox.style.display = 'block'; // Show it
+                } else {
+                    noticeBox.style.display = 'none'; // Hide it cleanly
                 }
             })
             .catch(err => console.error("Update failed:", err));
@@ -87,6 +112,9 @@
 
     // Refresh every 2 seconds
     setInterval(refreshData, 2000);
+    
+    // Run immediately on load
+    refreshData();
 </script>
 
 </body>
