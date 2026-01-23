@@ -1,0 +1,17 @@
+{% for person in staff %}
+<tr>
+    <td><code style="background: #f3f4f6; padding: 4px;">{{ person['uid'] }}</code></td>
+    <td><strong>{{ person['name'] }}</strong></td>
+    <td>
+        {% if person['is_present'] %}<span class="badge badge-green">IN</span>{% else %}<span class="badge badge-gray">OUT</span>{% endif %}
+    </td>
+    <td>
+        <a href="/admin/edit_staff/{{ person['uid'] }}" class="btn btn-warning btn-sm" style="text-decoration:none;">Edit</a>
+        <form method="POST" onsubmit="return confirm('Delete {{ person.name }}?');" style="display:inline;">
+            <input type="hidden" name="delete_staff" value="true">
+            <input type="hidden" name="staff_uid" value="{{ person['uid'] }}">
+            <button type="submit" class="btn btn-danger btn-sm">Del</button>
+        </form>
+    </td>
+</tr>
+{% endfor %}
