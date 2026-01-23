@@ -68,12 +68,13 @@
         fetch('/api/dashboard_stats')
             .then(response => response.json())
             .then(data => { 
+                // 1. Update Numbers
                 document.getElementById('live-seats').innerText = data.seats;
                 document.getElementById('live-occupancy').innerText = data.occupancy;
                 document.getElementById('live-staff').innerText = data.staff;
                 document.getElementById('live-res').innerText = data.reservations;
 
-                // Optional: Update Status Badge if it changes
+                // 2. Update Status Badge (Correctly uses data.system_status)
                 const badgeContainer = document.getElementById('status-badge-container');
                 if (data.system_status == 1) {
                     badgeContainer.innerHTML = '<div style="background: #d1fae5; color: #065f46; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">🟢 SYSTEM ONLINE</div>';

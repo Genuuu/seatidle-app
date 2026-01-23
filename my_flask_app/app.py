@@ -74,20 +74,13 @@ def dashboard():
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         
-        # Get Announcement
         row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         if row: announcement = row[0]
         
-        # Get Logs
         logs = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 50').fetchall()
-        
-        # Get Staff Count
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
-        
-        # 🟢 NEW: Count Active Reservations (This was missing!)
         res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
 
-    # 🟢 Make sure to pass 'res_count' here at the end!
     return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, 
                            system_status=system_status, occupancy=occupancy, 
                            staff_count=staff_count, res_count=res_count)
@@ -256,12 +249,51 @@ def update_data():
         print(f"❌ ERROR: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- API ROUTES ---
-@app.route('/api/get_seat_count')
-def get_seat_count():
-    if 'is_admin' not in session: return "Access Denied", 403
-    return str(get_seats())
+# --- API ROUTES (Flicker-Free) ---
 
+# 1. Dashboard API (Corrected to include system_status)
+@app.route('/api/dashboard_stats')
+def get_dashboard_stats():
+    seats = get_seats()
+    total = get_total_capacity()
+    occupancy = max(0, total - seats)
+    system_status = get_system_status() # Added!
+    
+    with sqlite3.connect(DB_FILE) as conn:
+        staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
+        res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
+    
+    return jsonify({
+        "seats": seats,
+        "occupancy": occupancy,
+        "staff": staff_count,
+        "reservations": res_count,
+        "system_status": system_status
+    })
+
+# 2. Admin API
+@app.route('/api/admin_stats')
+def get_admin_stats():
+    if 'is_admin' not in session: return jsonify({}), 403
+    seats = get_seats()
+    total = get_total_capacity()
+    status = get_system_status()
+    return jsonify({
+        "seats": seats,
+        "total_capacity": total,
+        "system_status": status
+    })
+
+# 3. Staff Table API
+@app.route('/api/get_staff_table')
+def get_staff_table():
+    if 'is_admin' not in session: return "Access Denied", 403
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        all_staff = conn.execute('SELECT * FROM staff').fetchall()
+    return render_template('_staff_rows.html', staff=all_staff)
+
+# 4. Reservations Table API
 @app.route('/api/get_reservations_table')
 def get_reservations_table():
     if 'is_admin' not in session: return "Access Denied", 403
@@ -269,6 +301,12 @@ def get_reservations_table():
         conn.row_factory = sqlite3.Row
         reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
     return render_template('_table_rows.html', reservations=reservations)
+
+# 5. Simple Seat Count API
+@app.route('/api/get_seat_count')
+def get_seat_count():
+    if 'is_admin' not in session: return "Access Denied", 403
+    return str(get_seats())
 
 # --- SIMULATOR ---
 @app.route('/simulator')
