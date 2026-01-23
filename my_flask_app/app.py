@@ -69,16 +69,18 @@ def dashboard():
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         
-        # Fetch Announcement for Initial Load
-        row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
+        # 🟢 CHANGED: Fetch message AND created_at
+        row = conn.execute('SELECT message, created_at FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         announcement = row[0] if row else None
+        ann_time = row[1] if row else None
         
         logs = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 50').fetchall()
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
         res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
 
-    return render_template('dashboard.html', seats=seats, announcement=announcement, logs=logs, 
-                           system_status=system_status, occupancy=occupancy, 
+    # Pass 'ann_time' to template
+    return render_template('dashboard.html', seats=seats, announcement=announcement, ann_time=ann_time, 
+                           logs=logs, system_status=system_status, occupancy=occupancy, 
                            staff_count=staff_count, res_count=res_count)
 
 @app.route('/staff')
@@ -277,9 +279,10 @@ def get_dashboard_stats():
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
         res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
         
-        # 🟢 THIS IS KEY: Fetch announcement for API
-        row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
+        # 🟢 CHANGED: Fetch message AND created_at
+        row = conn.execute('SELECT message, created_at FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         announcement = row[0] if row else None
+        ann_time = row[1] if row else None
     
     return jsonify({
         "seats": seats,
@@ -287,7 +290,8 @@ def get_dashboard_stats():
         "staff": staff_count,
         "reservations": res_count,
         "system_status": system_status,
-        "announcement": announcement 
+        "announcement": announcement,
+        "announcement_time": ann_time # 🟢 NEW FIELD
     })
 
 @app.route('/api/admin_stats')
