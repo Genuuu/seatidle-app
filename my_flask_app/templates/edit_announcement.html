@@ -3,20 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Announcement</title>
+    <title>Edit Announcement | SeatIdle</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 </head>
-<body style="justify-content: center;">
+<body>
 
-<div class="card" style="width: 400px;">
-    <h2>✏️ Edit Announcement</h2>
-    <form method="POST">
-        <label>Message</label>
-        <textarea name="message" required autofocus rows="4">{{ ann['message'] }}</textarea>
-        <button type="submit" class="btn btn-primary" style="margin-top: 20px;">Save Changes</button>
-        <a href="/admin/panel" class="btn btn-secondary" style="margin-top: 10px; text-decoration: none;">Cancel</a>
-    </form>
+<div class="container" style="max-width: 500px; margin-top: 50px;">
+    <div class="card">
+        <h2 style="text-align: center; margin-bottom: 20px;">📢 Edit Announcement</h2>
+        
+        <form method="POST">
+            <label>Posted On</label>
+            <input type="text" value="{{ ann['created_at'] }}" disabled style="background: #f3f4f6; color: #6b7280; cursor: not-allowed; margin-bottom: 15px;">
+            
+            <label>Message</label>
+            <textarea name="message" rows="4" required autofocus style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #d1d5db; font-family: 'Inter', sans-serif;">{{ ann['message'] }}</textarea>
+            
+            <div style="display: flex; gap: 10px; margin-top: 25px;">
+                <button type="submit" class="btn btn-warning">💾 Update Message</button>
+                <a href="/admin/panel" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
 </div>
 
 </body>
