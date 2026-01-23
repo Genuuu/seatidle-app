@@ -22,8 +22,6 @@ def get_sl_time():
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        
-        # Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS status (id INTEGER PRIMARY KEY, available_seats INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff (uid TEXT PRIMARY KEY, name TEXT, is_present INTEGER, last_seen TEXT)''')
@@ -31,7 +29,6 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, event_type TEXT, user_type TEXT, occupancy INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
         
-        # Defaults
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('total_capacity', '50'))
 
@@ -67,15 +64,14 @@ def dashboard():
     seats = get_seats()
     total = get_total_capacity()
     occupancy = max(0, total - seats)
-    
-    announcement = None
     system_status = get_system_status()
     
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         
+        # Fetch Announcement for Initial Load
         row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
-        if row: announcement = row[0]
+        announcement = row[0] if row else None
         
         logs = conn.execute('SELECT * FROM logs ORDER BY id DESC LIMIT 50').fetchall()
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
@@ -206,6 +202,23 @@ def admin_panel():
 
     return render_template('admin_panel.html', seats=seats, total_capacity=total_capacity, staff=all_staff, reservations=all_reservations, announcements=all_announcements, msg=msg, system_status=system_status)
 
+@app.route('/admin/edit_staff/<uid>', methods=['GET', 'POST'])
+def edit_staff(uid):
+    if 'is_admin' not in session: return redirect(url_for('admin_login'))
+    
+    if request.method == 'POST':
+        new_name = request.form.get('name')
+        with sqlite3.connect(DB_FILE) as conn:
+            conn.execute('UPDATE staff SET name = ? WHERE uid = ?', (new_name, uid))
+        return redirect(url_for('admin_panel'))
+
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        person = conn.execute('SELECT * FROM staff WHERE uid = ?', (uid,)).fetchone()
+
+    if not person: return "Staff member not found", 404
+    return render_template('edit_staff.html', person=person)
+
 @app.route('/logout')
 def logout():
     session.pop('is_admin', None)
@@ -249,29 +262,34 @@ def update_data():
         print(f"❌ ERROR: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# --- API ROUTES (Flicker-Free) ---
+# --- API ROUTES ---
 
-# 1. Dashboard API (Corrected to include system_status)
 @app.route('/api/dashboard_stats')
 def get_dashboard_stats():
+    # 1. Fetch Basic Data
     seats = get_seats()
     total = get_total_capacity()
     occupancy = max(0, total - seats)
-    system_status = get_system_status() # Added!
+    system_status = get_system_status()
     
+    # 2. Fetch DB Counts & Announcement
     with sqlite3.connect(DB_FILE) as conn:
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
         res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
+        
+        # 🟢 THIS IS KEY: Fetch announcement for API
+        row = conn.execute('SELECT message FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
+        announcement = row[0] if row else None
     
     return jsonify({
         "seats": seats,
         "occupancy": occupancy,
         "staff": staff_count,
         "reservations": res_count,
-        "system_status": system_status
+        "system_status": system_status,
+        "announcement": announcement 
     })
 
-# 2. Admin API
 @app.route('/api/admin_stats')
 def get_admin_stats():
     if 'is_admin' not in session: return jsonify({}), 403
@@ -284,7 +302,6 @@ def get_admin_stats():
         "system_status": status
     })
 
-# 3. Staff Table API
 @app.route('/api/get_staff_table')
 def get_staff_table():
     if 'is_admin' not in session: return "Access Denied", 403
@@ -293,7 +310,6 @@ def get_staff_table():
         all_staff = conn.execute('SELECT * FROM staff').fetchall()
     return render_template('_staff_rows.html', staff=all_staff)
 
-# 4. Reservations Table API
 @app.route('/api/get_reservations_table')
 def get_reservations_table():
     if 'is_admin' not in session: return "Access Denied", 403
@@ -302,31 +318,10 @@ def get_reservations_table():
         reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
     return render_template('_table_rows.html', reservations=reservations)
 
-# 5. Simple Seat Count API
 @app.route('/api/get_seat_count')
 def get_seat_count():
     if 'is_admin' not in session: return "Access Denied", 403
     return str(get_seats())
-
-# --- ROUTE TO EDIT STAFF ---
-@app.route('/admin/edit_staff/<uid>', methods=['GET', 'POST'])
-def edit_staff(uid):
-    if 'is_admin' not in session: return redirect(url_for('admin_login'))
-    
-    if request.method == 'POST':
-        new_name = request.form.get('name')
-        with sqlite3.connect(DB_FILE) as conn:
-            # We only update the name, keeping the UID (Card ID) same as it's the key
-            conn.execute('UPDATE staff SET name = ? WHERE uid = ?', (new_name, uid))
-        return redirect(url_for('admin_panel'))
-
-    # Fetch the existing staff details to show in the form
-    with sqlite3.connect(DB_FILE) as conn:
-        conn.row_factory = sqlite3.Row
-        person = conn.execute('SELECT * FROM staff WHERE uid = ?', (uid,)).fetchone()
-
-    if not person: return "Staff member not found", 404
-    return render_template('edit_staff.html', person=person)
 
 # --- SIMULATOR ---
 @app.route('/simulator')
@@ -360,7 +355,7 @@ def simulator():
     </head>
     <body>
         <div class="container">
-            <h1>🤖 Virtual Simulator</h1>
+            <h1>🤖 Virtual ESP32</h1>
             <h3>Hardware Simulator</h3>
 
             <div class="section-title">👥 CROWD SENSORS</div>
