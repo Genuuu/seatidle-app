@@ -14,7 +14,10 @@
 <div class="container">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h1>⚙️ Admin Panel</h1>
-        <a href="/logout" class="btn btn-danger btn-sm">Logout</a>
+        <div style="display: flex; gap: 10px;">
+            <a href="/" class="btn btn-secondary btn-sm" style="text-decoration: none; background: #6b7280; color: white;">← Dashboard</a>
+            <a href="/logout" class="btn btn-danger btn-sm">Logout</a>
+        </div>
     </div>
 
     {% if msg %} 
