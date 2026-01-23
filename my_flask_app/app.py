@@ -340,7 +340,7 @@ def simulator():
     </head>
     <body>
         <div class="container">
-            <h1>🤖 Virtual ESP32</h1>
+            <h1>🤖 Virtual Simulator</h1>
             <h3>Hardware Simulator</h3>
 
             <div class="section-title">👥 CROWD SENSORS</div>
