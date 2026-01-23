@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
-    <meta http-equiv="refresh" content="5">
+    
     <title>SeatIdle | Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -40,17 +40,17 @@
         <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 30px;">
             
             <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
-                <div style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ occupancy }}</div>
+                <div id="live-occupancy" style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ occupancy }}</div>
                 <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">People Inside</div>
             </div>
 
             <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
-                <div style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ staff_count }}</div>
+                <div id="live-staff" style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ staff_count }}</div>
                 <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Staff on Duty</div>
             </div>
 
             <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
-                <div style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ res_count }}</div>
+                <div id="live-res" style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ res_count }}</div>
                 <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Reservations</div>
             </div>
 
@@ -63,17 +63,22 @@
 </div>
 
 <script>
-    // Only refresh the seat count number (The other boxes refresh on page reload)
-    function refreshSeatCount() {
-        fetch('/api/get_seat_count')
-            .then(response => response.text())
-            .then(count => { 
-                document.getElementById('live-seats').innerText = count; 
+    // 🟢 NEW FLICKER-FREE UPDATER
+    function refreshData() {
+        fetch('/api/dashboard_stats')
+            .then(response => response.json())
+            .then(data => { 
+                // Update all the numbers instantly
+                document.getElementById('live-seats').innerText = data.seats;
+                document.getElementById('live-occupancy').innerText = data.occupancy;
+                document.getElementById('live-staff').innerText = data.staff;
+                document.getElementById('live-res').innerText = data.reservations;
             })
-            .catch(err => console.error("Failed to fetch seat count:", err));
+            .catch(err => console.error("Update failed:", err));
     }
-    // Refresh every 5 seconds
-    setInterval(refreshSeatCount, 5000);
+
+    // Run this every 2 seconds (2000 ms)
+    setInterval(refreshData, 2000);
 </script>
 
 </body>
