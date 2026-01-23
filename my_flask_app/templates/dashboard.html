@@ -61,22 +61,18 @@
         <div class="label">Seats Available</div>
 
         <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 30px;">
-            
             <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
                 <div id="live-occupancy" style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ occupancy }}</div>
                 <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">People Inside</div>
             </div>
-
             <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
                 <div id="live-staff" style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ staff_count }}</div>
                 <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Staff on Duty</div>
             </div>
-
             <div style="background: #f3f4f6; padding: 10px 5px; border-radius: 12px; width: 30%;">
                 <div id="live-res" style="font-size: 20px; font-weight: 800; color: #1f2937;">{{ res_count }}</div>
                 <div style="font-size: 10px; color: #6b7280; font-weight: 700; text-transform: uppercase;">Reservations</div>
             </div>
-
         </div>
 
         {% if session.get('user_id') %}
@@ -88,6 +84,8 @@
                 {% else %}
                     <a href="/reservations" class="btn btn-primary" style="display: block; margin-bottom: 10px;">📅 Manage My Bookings</a>
                 {% endif %}
+                
+                <a href="/staff" class="btn btn-secondary" style="display: block; margin-bottom: 10px;">👨‍💼 View Staff On Duty</a>
                 
                 <a href="/logout" class="btn btn-secondary" style="background: #ef4444; color: white;">Logout</a>
             </div>
@@ -104,13 +102,11 @@
         fetch('/api/dashboard_stats')
             .then(response => response.json())
             .then(data => { 
-                // 1. Update Numbers
                 document.getElementById('live-seats').innerText = data.seats;
                 document.getElementById('live-occupancy').innerText = data.occupancy;
                 document.getElementById('live-staff').innerText = data.staff;
                 document.getElementById('live-res').innerText = data.reservations;
 
-                // 2. Update Status Badge
                 const badgeContainer = document.getElementById('status-badge-container');
                 if (data.system_status == 1) {
                     badgeContainer.innerHTML = '<div style="background: #d1fae5; color: #065f46; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">🟢 SYSTEM ONLINE</div>';
@@ -118,7 +114,6 @@
                     badgeContainer.innerHTML = '<div style="background: #fee2e2; color: #991b1b; padding: 8px 16px; border-radius: 50px; display: inline-block; font-weight: bold; font-size: 14px; margin-bottom: 20px;">🔴 SYSTEM OFFLINE</div>';
                 }
 
-                // 3. Update Announcement & Time
                 const noticeBox = document.getElementById('notice-box');
                 const noticeText = document.getElementById('notice-text');
                 const noticeTime = document.getElementById('notice-time');
