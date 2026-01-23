@@ -3,80 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SeatIdle | Reservations</title>
+    <title>My Reservations | SeatIdle</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
-{% include 'clock_widget.html' %}
-
-<div class="container" style="max-width: 600px;">
-    <a href="/" class="back-link">← Back to Dashboard</a>
-    <h1>📅 Seat Reservations</h1>
-
-    {% if new_otp %}
-    <div class="otp-display">
-        Code: {{ new_otp }}<br>
-        <small style="font-size: 14px; font-weight: normal; color: #047857;">Save this code to check in!</small>
-    </div>
-    {% endif %}
-
-    {% if message %}
-    <div class="announcement-bar" style="background: {{ '#d1fae5' if '✅' in message else '#fee2e2' }}; color: {{ '#065f46' if '✅' in message else '#991b1b' }}; border: none;">
-        {{ message }}
-    </div>
-    {% endif %}
-
+<div class="container" style="max-width: 500px; margin-top: 30px;">
+    
     <div class="card">
-        <h2>New Booking</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0;">📅 Book a Seat</h2>
+            <a href="/" class="btn btn-secondary btn-sm">← Back</a>
+        </div>
+
+        {% if message %}
+        <div style="padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold; 
+            {% if '✅' in message %} background: #d1fae5; color: #065f46; {% else %} background: #fee2e2; color: #991b1b; {% endif %}">
+            {{ message }}
+        </div>
+        {% endif %}
+
+        {% if new_otp %}
+        <div style="background: #10b981; color: white; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 25px; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);">
+            <div style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9;">Booking Confirmed!</div>
+            <div style="font-size: 48px; font-weight: 800; margin: 10px 0;">{{ new_otp }}</div>
+            <div style="font-size: 12px;">Save this OTP to check-in.</div>
+        </div>
+        {% endif %}
+
         <form method="POST">
             <input type="hidden" name="create_booking" value="true">
-            <label>Full Name</label>
-            <input type="text" name="name" required placeholder="Ex: John Doe">
-            <div style="display: flex; gap: 10px;">
-                <div style="flex:1">
-                    <label>Date</label>
-                    <input type="date" name="date" required>
-                </div>
-                <div style="flex:1">
-                    <label>Time Slot</label>
-                    <select name="time">
-                        <option>08:00 - 10:00</option>
-                        <option>10:00 - 12:00</option>
-                        <option>12:00 - 14:00</option>
-                        <option>14:00 - 16:00</option>
-                    </select>
-                </div>
+            
+            <div style="background: #f3f4f6; padding: 12px; border-radius: 8px; margin-bottom: 15px; text-align: center; color: #374151; font-size: 14px;">
+                You are booking as: <strong style="color: #111827;">{{ username }}</strong>
             </div>
-            <button class="btn btn-primary" type="submit">Generate Booking Code</button>
+
+            <label>Select Date</label>
+            <input type="date" name="date" required style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #d1d5db; background: white;">
+            
+            <label>Time Slot</label>
+            <select name="time" style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #d1d5db; background: white;">
+                <option>08:00 AM - 12:00 PM</option>
+                <option>12:00 PM - 04:00 PM</option>
+                <option>04:00 PM - 08:00 PM</option>
+            </select>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Confirm Booking</button>
         </form>
     </div>
 
     <div class="card">
-        <h3>Upcoming Bookings</h3>
-        {% for booking in bookings %}
-        <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee;">
-            <div>
-                <strong>{{ booking['name'] }}</strong><br>
-                <small style="color: gray;">{{ booking['res_date'] }} @ {{ booking['time_slot'] }}</small>
+        <h3>🎟️ Your Active Bookings</h3>
+        
+        {% if bookings %}
+            {% for book in bookings %}
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; padding: 15px; border-radius: 12px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-weight: 800; font-size: 20px; color: #3b82f6; letter-spacing: 1px;">{{ book['otp'] }}</div>
+                    <div style="font-size: 12px; color: #4b5563; margin-top: 4px;">
+                        📅 {{ book['res_date'] }} <br> 
+                        ⏰ {{ book['time_slot'] }}
+                    </div>
+                </div>
+                
+                <form method="POST" onsubmit="return confirm('Cancel this booking?');" style="margin: 0;">
+                    <input type="hidden" name="cancel_booking" value="true">
+                    <input type="hidden" name="otp_check" value="{{ book['otp'] }}">
+                    <button type="submit" class="btn btn-danger btn-sm" style="padding: 8px 12px;">Cancel</button>
+                </form>
             </div>
-            <span class="badge badge-green" style="height: fit-content;">Active</span>
-        </div>
+            {% endfor %}
         {% else %}
-            <p style="color: #999;">No active reservations.</p>
-        {% endfor %}
+            <div style="text-align: center; color: #9ca3af; padding: 20px;">
+                No active reservations found.
+            </div>
+        {% endif %}
     </div>
 
-    <div class="card" style="border: 1px solid var(--danger);">
-        <h3 style="color: var(--danger);">🚫 Cancel Reservation</h3>
-        <p style="font-size: 14px; color: #666;">Enter your OTP code below.</p>
-        <form method="POST" style="display: flex; gap: 10px;">
-            <input type="hidden" name="cancel_booking" value="true">
-            <input type="text" name="otp_check" placeholder="4-Digit Code" required style="margin: 0; text-align: center;">
-            <button class="btn btn-danger btn-sm" type="submit" style="width: auto;">Cancel</button>
-        </form>
-    </div>
 </div>
 
 </body>

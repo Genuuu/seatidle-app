@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register | SeatIdle</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="container" style="max-width: 400px; margin-top: 50px;">
+    <div class="card center">
+        <h1 style="margin-bottom: 20px;">📝 Sign Up</h1>
+        
+        {% if error %}
+        <div style="background: #fee2e2; color: #991b1b; padding: 10px; border-radius: 8px; margin-bottom: 20px; font-weight: bold;">
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST">
+            <input type="text" name="username" placeholder="Choose a Username" required style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #d1d5db;">
+            <input type="password" name="password" placeholder="Password" required style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #d1d5db;">
+            <input type="password" name="confirm_password" placeholder="Confirm Password" required style="width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #d1d5db;">
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Create Account</button>
+        </form>
+
+        <p style="margin-top: 20px; color: #6b7280; font-size: 14px;">
+            Already registered? <a href="/login" style="color: #3b82f6; font-weight: 600;">Login here</a>
+        </p>
+    </div>
+</div>
+
+</body>
+</html>
