@@ -226,6 +226,7 @@ def logout():
     session.pop('is_admin', None)
     return redirect(url_for('dashboard'))
 
+
 # --- IOT ROUTE ---
 @app.route('/update_data', methods=['POST'])
 def update_data():

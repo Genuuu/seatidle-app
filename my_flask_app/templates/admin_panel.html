@@ -77,7 +77,6 @@
                 <td style="font-size: 12px; color: #666;">{{ ann['created_at'][0:10] }}</td>
                 <td>{{ ann['message'] }}</td>
                 <td>
-                    <a href="/admin/edit_announcement/{{ ann['id'] }}" class="btn btn-warning btn-sm" style="text-decoration:none;">Edit</a>
                     <form method="POST" onsubmit="return confirm('Delete?');" style="display:inline;">
                         <input type="hidden" name="delete_announcement" value="true">
                         <input type="hidden" name="ann_id" value="{{ ann['id'] }}">
