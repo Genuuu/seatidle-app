@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Database | SeatIdle</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="container" style="max-width: 800px; margin-top: 30px;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1>👥 Registered Users</h1>
+        <a href="/admin/panel" class="btn btn-secondary btn-sm">← Back to Admin Panel</a>
+    </div>
+
+    {% if msg %} 
+    <div class="announcement-bar" style="background: #fee2e2; color: #991b1b; border: none; text-align: center; margin-bottom: 20px;">{{ msg }}</div> 
+    {% endif %}
+
+    <div class="card">
+        <div style="margin-bottom: 15px; color: #6b7280; font-size: 14px;">
+            Total Users: <strong>{{ users|length }}</strong>
+        </div>
+
+        <table>
+            <thead>
+                <tr><th>ID</th><th>Username</th><th>Role</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td style="color: #6b7280; font-size: 12px;">#{{ user['id'] }}</td>
+                    <td style="font-weight: 600;">{{ user['username'] }}</td>
+                    <td>
+                        {% if user['role'] == 'admin' %}
+                            <span style="background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">ADMIN</span>
+                        {% else %}
+                            <span style="background: #eff6ff; color: #1e40af; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">STUDENT</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if user['role'] != 'admin' %}
+                        <form method="POST" onsubmit="return confirm('Permanently delete user {{ user.username }}?');" style="display:inline;">
+                            <input type="hidden" name="delete_user" value="true">
+                            <input type="hidden" name="user_id" value="{{ user['id'] }}">
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                        </form>
+                        {% else %}
+                        <span style="color: #9ca3af; font-size: 12px;">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="text-align: center; color: #9ca3af;">No registered users found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+</body>
+</html>

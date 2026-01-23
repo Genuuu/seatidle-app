@@ -23,15 +23,13 @@ def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         
-        # Existing Tables
+        # Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS status (id INTEGER PRIMARY KEY, available_seats INTEGER)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER, user_id INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff (uid TEXT PRIMARY KEY, name TEXT, is_present INTEGER, last_seen TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, event_type TEXT, user_type TEXT, occupancy INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)''')
-        
-        # 🟢 NEW: Users Table (For Admins & Students)
+        cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER, user_id INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, role TEXT)''')
 
         # Defaults
@@ -42,10 +40,9 @@ def init_db():
         if cursor.fetchone()[0] == 0:
             cursor.execute('INSERT INTO status (id, available_seats) VALUES (1, 50)')
         
-        # Create Default Admin (If not exists)
+        # Create Default Admin
         cursor.execute('SELECT * FROM users WHERE role = "admin"')
         if not cursor.fetchone():
-            # Username: admin, Password: admin123
             hashed_pw = generate_password_hash("admin123")
             cursor.execute('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', ("admin", hashed_pw, "admin"))
 
@@ -81,6 +78,7 @@ def dashboard():
         row = conn.execute('SELECT message, created_at FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         announcement = row[0] if row else None
         ann_time = row[1] if row else None
+        
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
         res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
 
@@ -88,7 +86,7 @@ def dashboard():
                            system_status=system_status, occupancy=occupancy, 
                            staff_count=staff_count, res_count=res_count)
 
-# --- AUTH ROUTES (Login/Register) ---
+# --- AUTH ROUTES ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     error = None
@@ -101,12 +99,10 @@ def login():
             user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
             
             if user and check_password_hash(user['password'], password):
-                # Login Success!
                 session['user_id'] = user['id']
                 session['username'] = user['username']
                 session['role'] = user['role']
                 
-                # Redirect based on Role
                 if user['role'] == 'admin':
                     return redirect(url_for('admin_panel'))
                 else:
@@ -130,7 +126,6 @@ def register():
             try:
                 hashed_pw = generate_password_hash(password)
                 with sqlite3.connect(DB_FILE) as conn:
-                    # New users are always 'student'
                     conn.execute('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', (username, hashed_pw, 'student'))
                 return redirect(url_for('login'))
             except sqlite3.IntegrityError:
@@ -146,7 +141,6 @@ def logout():
 # --- USER ROUTES ---
 @app.route('/reservations', methods=['GET', 'POST'])
 def reservations_view():
-    # 🔒 PROTECTED: Must be logged in
     if 'user_id' not in session: return redirect(url_for('login'))
 
     new_otp = None
@@ -154,7 +148,6 @@ def reservations_view():
     
     if request.method == 'POST':
         if 'create_booking' in request.form:
-            # 🟢 AUTO-FILL NAME from Session
             name = session['username'] 
             date = request.form.get('date')
             time = request.form.get('time')
@@ -167,7 +160,6 @@ def reservations_view():
         elif 'cancel_booking' in request.form:
             otp = request.form.get('otp_check')
             with sqlite3.connect(DB_FILE) as conn:
-                # Users can only cancel THEIR OWN bookings
                 cursor = conn.cursor()
                 cursor.execute('SELECT * FROM reservations WHERE otp = ? AND user_id = ? AND is_used = 0', (otp, session['user_id']))
                 if cursor.fetchone():
@@ -176,17 +168,15 @@ def reservations_view():
                     message = "✅ Reservation cancelled successfully."
                 else: message = "❌ Invalid OTP or not your booking."
 
-    # Show only THIS USER'S bookings
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         my_bookings = conn.execute('SELECT * FROM reservations WHERE user_id = ? AND is_used = 0 ORDER BY created_at DESC', (session['user_id'],)).fetchall()
         
     return render_template('reservations.html', bookings=my_bookings, new_otp=new_otp, message=message, username=session['username'])
 
-# --- ADMIN ROUTES ---
+# --- ADMIN PANEL ---
 @app.route('/admin/panel', methods=['GET', 'POST'])
 def admin_panel():
-    # 🔒 PROTECTED: Must be Admin
     if session.get('role') != 'admin': return redirect(url_for('login'))
 
     msg = None
@@ -254,13 +244,31 @@ def admin_panel():
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         all_staff = conn.execute('SELECT * FROM staff').fetchall()
-        # Admin sees ALL reservations
         all_reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
         all_announcements = conn.execute('SELECT * FROM announcements ORDER BY id DESC').fetchall()
 
     return render_template('admin_panel.html', seats=seats, total_capacity=total_capacity, staff=all_staff, reservations=all_reservations, announcements=all_announcements, msg=msg, system_status=system_status)
 
-# --- ADDITIONAL ROUTES (Helpers) ---
+# 🟢 NEW: USER MANAGEMENT ROUTE
+@app.route('/admin/users', methods=['GET', 'POST'])
+def admin_users():
+    if session.get('role') != 'admin': return redirect(url_for('login'))
+    
+    msg = None
+    if request.method == 'POST':
+        if 'delete_user' in request.form:
+            user_id = request.form.get('user_id')
+            with sqlite3.connect(DB_FILE) as conn:
+                conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
+            msg = "🗑️ User Account Deleted"
+
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        all_users = conn.execute('SELECT * FROM users ORDER BY id DESC').fetchall()
+
+    return render_template('admin_users.html', users=all_users, msg=msg)
+
+# --- HELPERS ---
 @app.route('/admin/edit_staff/<uid>', methods=['GET', 'POST'])
 def edit_staff(uid):
     if session.get('role') != 'admin': return redirect(url_for('login'))
@@ -285,7 +293,7 @@ def staff_view():
         active_staff = conn.execute('SELECT * FROM staff WHERE is_present = 1').fetchall()
     return render_template('staff.html', staff=active_staff)
 
-# --- APIs (Unchanged) ---
+# --- API ROUTES ---
 @app.route('/update_data', methods=['POST'])
 def update_data():
     try:
@@ -357,7 +365,102 @@ def get_reservations_table():
 # --- SIMULATOR ---
 @app.route('/simulator')
 def simulator():
-    return """<!DOCTYPE html><html lang="en"><head>... (Use your existing simulator code here) ...</head></html>"""
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SeatIdle Simulator</title>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+        <style>
+            body { font-family: 'Inter', sans-serif; background: #111827; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .container { background: #1f2937; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; width: 350px; }
+            h1 { margin-bottom: 5px; color: #60a5fa; }
+            h3 { margin-top: 0; color: #9ca3af; font-weight: 400; font-size: 14px; margin-bottom: 30px; }
+            .counter-box { background: #374151; padding: 20px; border-radius: 12px; margin-bottom: 30px; }
+            .count { font-size: 60px; font-weight: 800; }
+            .label { color: #9ca3af; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+            .btn-group { display: flex; gap: 10px; margin-bottom: 30px; }
+            button { flex: 1; padding: 15px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; transition: 0.1s; }
+            .btn-entry { background: #10b981; color: white; }
+            .btn-exit { background: #ef4444; color: white; }
+            .btn-rfid { background: #8b5cf6; color: white; width: 100%; margin-top: 5px;}
+            button:active { transform: scale(0.96); opacity: 0.9; }
+            input { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #4b5563; background: #374151; color: white; margin-bottom: 10px; box-sizing: border-box; text-align: center;}
+            .section-title { text-align: left; color: #d1d5db; font-weight: 600; margin-bottom: 10px; font-size: 14px; }
+            #status { margin-top: 20px; color: #6b7280; font-family: monospace; font-size: 12px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🤖 Virtual ESP32</h1>
+            <h3>Hardware Simulator</h3>
+
+            <div class="section-title">👥 CROWD SENSORS</div>
+            <div class="counter-box">
+                <div class="count" id="count-display">0</div>
+                <div class="label">People Inside</div>
+            </div>
+            <div class="btn-group">
+                <button class="btn-entry" onclick="updateCount(1)">+ ENTRY</button>
+                <button class="btn-exit" onclick="updateCount(-1)">- EXIT</button>
+            </div>
+
+            <div class="section-title">💳 RFID READER (STAFF)</div>
+            <input type="text" id="rfid-input" placeholder="Scan Card (e.g. CARD-001)">
+            <div class="btn-group">
+                <button class="btn-rfid" onclick="scanRFID('ENTRY')">Scan Entry</button>
+                <button class="btn-rfid" style="background:#6366f1" onclick="scanRFID('EXIT')">Scan Exit</button>
+            </div>
+
+            <div id="status">Ready to simulate...</div>
+        </div>
+
+        <script>
+            let localCount = 0;
+
+            function updateCount(change) {
+                localCount += change;
+                if(localCount < 0) localCount = 0;
+                document.getElementById('count-display').innerText = localCount;
+                let eventType = change > 0 ? "ENTRY" : "EXIT";
+                sendData(localCount, eventType, "STUDENT", null);
+            }
+
+            function scanRFID(eventType) {
+                let uid = document.getElementById('rfid-input').value;
+                if(!uid) { alert("Please enter a Card ID!"); return; }
+                sendData(localCount, eventType, "STAFF", uid);
+            }
+
+            function sendData(occ, evt, usr, uid) {
+                document.getElementById('status').innerText = "Sending " + evt + "...";
+                
+                fetch('/update_data', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        occupancy: occ,
+                        event: evt,
+                        user: usr,
+                        uid: uid
+                    })
+                })
+                .then(r => r.json())
+                .then(d => {
+                    document.getElementById('status').innerText = "✅ Sent: " + evt + " | " + (uid ? uid : "Student");
+                    if(d.status === 'error') alert(d.message);
+                })
+                .catch(e => {
+                    document.getElementById('status').innerText = "❌ Error";
+                    console.error(e);
+                });
+            }
+        </script>
+    </body>
+    </html>
+    """
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
