@@ -308,6 +308,26 @@ def get_seat_count():
     if 'is_admin' not in session: return "Access Denied", 403
     return str(get_seats())
 
+# --- ROUTE TO EDIT STAFF ---
+@app.route('/admin/edit_staff/<uid>', methods=['GET', 'POST'])
+def edit_staff(uid):
+    if 'is_admin' not in session: return redirect(url_for('admin_login'))
+    
+    if request.method == 'POST':
+        new_name = request.form.get('name')
+        with sqlite3.connect(DB_FILE) as conn:
+            # We only update the name, keeping the UID (Card ID) same as it's the key
+            conn.execute('UPDATE staff SET name = ? WHERE uid = ?', (new_name, uid))
+        return redirect(url_for('admin_panel'))
+
+    # Fetch the existing staff details to show in the form
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        person = conn.execute('SELECT * FROM staff WHERE uid = ?', (uid,)).fetchone()
+
+    if not person: return "Staff member not found", 404
+    return render_template('edit_staff.html', person=person)
+
 # --- SIMULATOR ---
 @app.route('/simulator')
 def simulator():
