@@ -27,19 +27,12 @@
     <div class="card">
         <h3>🔌 System Power</h3>
         <div style="display: flex; align-items: center; justify-content: space-between; background: #f9fafb; padding: 15px; border-radius: 12px;">
-            
             <div style="font-size: 16px; font-weight: 600;">
                 Current Status: <span id="status-badge">Loading...</span>
             </div>
-
-            <form method="POST" style="margin: 0;">
-                <input type="hidden" name="toggle_status" value="true">
-                {% if system_status == 1 %}
-                    <button type="submit" class="btn btn-danger btn-sm">Turn Offline 🛑</button>
-                {% else %}
-                    <button type="submit" class="btn btn-primary btn-sm" style="background: #10b981; border: none;">Turn Online ⚡</button>
-                {% endif %}
-            </form>
+            <div style="font-size: 12px; color: #6b7280; font-style: italic;">
+                Auto-syncing via Hardware Heartbeat
+            </div>
         </div>
     </div>
 
@@ -73,6 +66,29 @@
         </div>
     </div>
 
+    <div class="card" style="border-left: 5px solid #8b5cf6;">
+        <h3 style="color: #8b5cf6; margin-bottom: 5px;">💳 Manage RFID Cards (Staff)</h3>
+        <p style="margin-top: 0; font-size: 13px; color: #6b7280; margin-bottom: 15px;">
+            Add a new card here, then press <strong>'D'</strong> on the physical keypad to sync instantly!
+        </p>
+
+        <form method="POST" style="display: flex; gap: 10px; margin-bottom: 20px; background: #f5f3ff; padding: 15px; border-radius: 8px;">
+            <input type="hidden" name="add_staff" value="true">
+            <input type="text" name="new_uid" placeholder="Card UID (e.g. A3F21190)" required style="margin:0; flex: 1; border: 1px solid #c4b5fd;">
+            <input type="text" name="new_name" placeholder="Staff Name" required style="margin:0; flex: 1; border: 1px solid #c4b5fd;">
+            <button type="submit" class="btn btn-primary btn-sm" style="background: #8b5cf6; border: none;">+ Add Card</button>
+        </form>
+
+        <table>
+            <thead>
+                <tr><th>UID</th><th>Name</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="staff-table-body">
+                {% include '_staff_rows.html' %}
+            </tbody>
+        </table>
+    </div>
+
     <div class="card">
         <h3>📢 Announcements</h3>
         <form method="POST" style="display: flex; gap: 10px; background: #fffbeb; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
@@ -102,25 +118,6 @@
     </div>
 
     <div class="card">
-        <h3>👨‍💼 Staff Database</h3>
-        <form method="POST" style="display: flex; gap: 10px; margin-bottom: 20px;">
-            <input type="hidden" name="add_staff" value="true">
-            <input type="text" name="new_uid" placeholder="Card UID" required style="margin:0;">
-            <input type="text" name="new_name" placeholder="Full Name" required style="margin:0;">
-            <button type="submit" class="btn btn-secondary btn-sm">Add Staff</button>
-        </form>
-
-        <table>
-            <thead>
-                <tr><th>UID</th><th>Name</th><th>Status</th><th>Actions</th></tr>
-            </thead>
-            <tbody id="staff-table-body">
-                {% include '_staff_rows.html' %}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="card">
         <h3>📅 Active Reservations</h3>
         <table>
             <thead>
@@ -135,7 +132,6 @@
 
 <script>
     function refreshAdminPanel() {
-        // 1. Update Numbers & Status
         fetch('/api/admin_stats')
             .then(r => r.json())
             .then(data => {
@@ -149,21 +145,17 @@
                 }
             });
 
-        // 2. Update Reservations Table
         fetch('/api/get_reservations_table')
             .then(r => r.text())
             .then(html => { document.getElementById('live-table').innerHTML = html; });
 
-        // 3. Update Staff Table
         fetch('/api/get_staff_table')
             .then(r => r.text())
             .then(html => { document.getElementById('staff-table-body').innerHTML = html; });
     }
 
-    // Refresh every 2 seconds
     setInterval(refreshAdminPanel, 2000);
-    
-    refreshAdminPanel(); // Run immediately
+    refreshAdminPanel(); 
 </script>
 
 </body>

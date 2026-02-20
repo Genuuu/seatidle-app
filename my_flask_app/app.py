@@ -30,7 +30,6 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER, user_id INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, role TEXT)''')
 
-        cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('total_capacity', '50'))
 
         cursor.execute('SELECT count(*) FROM status')
@@ -55,10 +54,24 @@ def get_total_capacity():
         row = conn.execute('SELECT value FROM settings WHERE key="total_capacity"').fetchone()
         return int(row[0]) if row else 50
 
-def get_system_status():
+# NEW: Automatically stamps the time the ESP32 last talked to the server
+def update_last_ping():
     with sqlite3.connect(DB_FILE) as conn:
-        row = conn.execute('SELECT value FROM settings WHERE key="system_status"').fetchone()
-        return int(row[0]) if row else 1
+        conn.execute('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', ('last_ping', get_sl_time()))
+
+# NEW: Automatically calculates if the ESP32 has pinged within the last 65 seconds
+def get_system_status():
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            row = conn.execute('SELECT value FROM settings WHERE key="last_ping"').fetchone()
+            if row:
+                last_ping = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+                now = datetime.strptime(get_sl_time(), "%Y-%m-%d %H:%M:%S")
+                if (now - last_ping).total_seconds() <= 65: 
+                    return 1 # Online!
+    except:
+        pass
+    return 0 # Offline!
 
 # --- PUBLIC ROUTES ---
 @app.route('/')
@@ -201,12 +214,6 @@ def admin_panel():
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('DELETE FROM reservations WHERE otp = ?', (otp,))
             msg = "🗑️ Reservation deleted."
-        elif 'toggle_status' in request.form:
-            current = get_system_status()
-            new_val = '0' if current == 1 else '1'
-            with sqlite3.connect(DB_FILE) as conn:
-                conn.execute('UPDATE settings SET value = ? WHERE key="system_status"', (new_val,))
-            msg = "✅ System Status Updated"
 
     seats = get_seats()
     total_capacity = get_total_capacity() 
@@ -258,24 +265,29 @@ def staff_view():
 
 # --- API ROUTES ---
 
-# UPDATED: Now sends the IN/OUT status alongside the UID!
+# NEW: The dedicated heartbeat endpoint for the ESP32
+@app.route('/ping', methods=['GET'])
+def ping():
+    update_last_ping()
+    return "OK", 200
+
 @app.route('/get_staff', methods=['GET'])
 def get_staff():
     try:
+        update_last_ping() # Syncing counts as a heartbeat!
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
             cursor.execute('SELECT uid, is_present FROM staff')
             rows = cursor.fetchall()
-            # Returns data like: "A3F21190:0,B4E322A1:1"
             staff_cards = [f"{row[0]}:{row[1]}" for row in rows]
             return ",".join(staff_cards), 200
     except Exception as e:
         return str(e), 500
 
-# UPDATED: Handles the decoupled math safely
 @app.route('/update_data', methods=['POST'])
 def update_data():
     try:
+        update_last_ping() # Sending data counts as a heartbeat!
         data = request.get_json(force=True, silent=True)
         if not data: return jsonify({"status": "error", "message": "No JSON data"}), 400
         
@@ -289,22 +301,17 @@ def update_data():
         
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            
-            # Handle Staff Specific Tracking
             if uid != "":
                 is_present = 1 if event == "ENTRY" else 0
                 cursor.execute('UPDATE staff SET is_present = ?, last_seen = ? WHERE uid = ?', (is_present, now, uid))
                 cursor.execute('SELECT name FROM staff WHERE uid = ?', (uid,))
                 if cursor.fetchone(): user = "STAFF"
             
-            # Update the general student seating pool
             if user != "STAFF":
-                # Ensure the math doesn't break if ESP32 momentarily dips into negatives to compensate
                 safe_occ = max(0, occupancy) 
                 new_available = max(0, total_limit - safe_occ)
                 cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
             
-            # Always log the event
             cursor.execute("INSERT INTO logs (timestamp, event_type, user_type, occupancy) VALUES (?, ?, ?, ?)", (now, event, user, max(0, occupancy)))
             conn.commit()
             
@@ -410,7 +417,6 @@ def simulator():
 
         <script>
             let localCount = 0;
-
             function updateCount(change) {
                 localCount += change;
                 if(localCount < 0) localCount = 0;
@@ -418,25 +424,17 @@ def simulator():
                 let eventType = change > 0 ? "ENTRY" : "EXIT";
                 sendData(localCount, eventType, "STUDENT", null);
             }
-
             function scanRFID(eventType) {
                 let uid = document.getElementById('rfid-input').value;
                 if(!uid) { alert("Please enter a Card ID!"); return; }
                 sendData(localCount, eventType, "STAFF", uid);
             }
-
             function sendData(occ, evt, usr, uid) {
                 document.getElementById('status').innerText = "Sending " + evt + "...";
-                
                 fetch('/update_data', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        occupancy: occ,
-                        event: evt,
-                        user: usr,
-                        uid: uid
-                    })
+                    body: JSON.stringify({ occupancy: occ, event: evt, user: usr, uid: uid })
                 })
                 .then(r => r.json())
                 .then(d => {
@@ -445,9 +443,12 @@ def simulator():
                 })
                 .catch(e => {
                     document.getElementById('status').innerText = "❌ Error";
-                    console.error(e);
                 });
             }
+            // SIMULATOR HEARTBEAT (So you can test without the physical ESP32!)
+            setInterval(() => {
+                fetch('/ping').catch(e => console.log("Ping failed"));
+            }, 30000);
         </script>
     </body>
     </html>
