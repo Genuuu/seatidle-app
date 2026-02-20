@@ -3,22 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Staff</title>
+    <title>Edit Staff | SeatIdle</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 </head>
-<body style="justify-content: center;">
+<body>
 
-<div class="card" style="width: 400px;">
-    <h2>✏️ Edit Staff Member</h2>
-    <form method="POST">
-        <label>Card UID</label>
-        <input type="text" value="{{ person['uid'] }}" disabled>
-        <label>Full Name</label>
-        <input type="text" name="new_name" value="{{ person['name'] }}" required autofocus>
-        <button type="submit" class="btn btn-primary" style="margin-top: 20px;">Save Changes</button>
-        <a href="/admin/panel" class="btn btn-secondary" style="margin-top: 10px; text-decoration: none;">Cancel</a>
-    </form>
+<div class="container" style="max-width: 500px; margin-top: 50px;">
+    <div class="card">
+        <h2 style="text-align: center; margin-bottom: 20px;">✏️ Edit Staff Member</h2>
+        
+        <form method="POST">
+            <label>Card UID (ID)</label>
+            <input type="text" value="{{ person['uid'] }}" disabled style="background: #f3f4f6; color: #6b7280; cursor: not-allowed;">
+            
+            <label>Full Name</label>
+            <input type="text" name="name" value="{{ person['name'] }}" required autofocus>
+            
+            <div style="display: flex; gap: 10px; margin-top: 25px;">
+                <button type="submit" class="btn btn-primary">💾 Save Changes</button>
+                <a href="/admin/panel" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
 </div>
 
 </body>
