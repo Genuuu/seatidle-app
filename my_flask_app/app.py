@@ -73,7 +73,6 @@ def dashboard():
         row = conn.execute('SELECT message, created_at FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         announcement = row[0] if row else None
         ann_time = row[1] if row else None
-        
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
         res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
 
@@ -258,41 +257,57 @@ def staff_view():
     return render_template('staff.html', staff=active_staff)
 
 # --- API ROUTES ---
+
+# UPDATED: Now sends the IN/OUT status alongside the UID!
 @app.route('/get_staff', methods=['GET'])
 def get_staff():
     try:
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT uid FROM staff')
+            cursor.execute('SELECT uid, is_present FROM staff')
             rows = cursor.fetchall()
-            staff_cards = [row[0] for row in rows]
+            # Returns data like: "A3F21190:0,B4E322A1:1"
+            staff_cards = [f"{row[0]}:{row[1]}" for row in rows]
             return ",".join(staff_cards), 200
     except Exception as e:
         return str(e), 500
 
+# UPDATED: Handles the decoupled math safely
 @app.route('/update_data', methods=['POST'])
 def update_data():
     try:
         data = request.get_json(force=True, silent=True)
         if not data: return jsonify({"status": "error", "message": "No JSON data"}), 400
+        
         occupancy = int(data.get('occupancy', 0)) 
         event = data.get('event', "UPDATE")
         user = data.get('user', "STUDENT")
-        uid = data.get('uid', None)
+        uid = data.get('uid', "")
+        
         now = get_sl_time()
         total_limit = get_total_capacity() 
+        
         with sqlite3.connect(DB_FILE) as conn:
             cursor = conn.cursor()
-            if uid:
+            
+            # Handle Staff Specific Tracking
+            if uid != "":
                 is_present = 1 if event == "ENTRY" else 0
                 cursor.execute('UPDATE staff SET is_present = ?, last_seen = ? WHERE uid = ?', (is_present, now, uid))
                 cursor.execute('SELECT name FROM staff WHERE uid = ?', (uid,))
                 if cursor.fetchone(): user = "STAFF"
+            
+            # Update the general student seating pool
             if user != "STAFF":
-                new_available = max(0, total_limit - occupancy)
+                # Ensure the math doesn't break if ESP32 momentarily dips into negatives to compensate
+                safe_occ = max(0, occupancy) 
+                new_available = max(0, total_limit - safe_occ)
                 cursor.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
-            cursor.execute("INSERT INTO logs (timestamp, event_type, user_type, occupancy) VALUES (?, ?, ?, ?)", (now, event, user, occupancy))
+            
+            # Always log the event
+            cursor.execute("INSERT INTO logs (timestamp, event_type, user_type, occupancy) VALUES (?, ?, ?, ?)", (now, event, user, max(0, occupancy)))
             conn.commit()
+            
         return jsonify({"status": "success"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
