@@ -22,8 +22,6 @@ def get_sl_time():
 def init_db():
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        
-        # Tables
         cursor.execute('''CREATE TABLE IF NOT EXISTS status (id INTEGER PRIMARY KEY, available_seats INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS staff (uid TEXT PRIMARY KEY, name TEXT, is_present INTEGER, last_seen TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS announcements (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)''')
@@ -32,7 +30,6 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS reservations (otp TEXT PRIMARY KEY, name TEXT, res_date TEXT, time_slot TEXT, created_at TEXT, is_used INTEGER, user_id INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, role TEXT)''')
 
-        # Defaults
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('system_status', '1'))
         cursor.execute('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ('total_capacity', '50'))
 
@@ -40,12 +37,10 @@ def init_db():
         if cursor.fetchone()[0] == 0:
             cursor.execute('INSERT INTO status (id, available_seats) VALUES (1, 50)')
         
-        # Create Default Admin
         cursor.execute('SELECT * FROM users WHERE role = "admin"')
         if not cursor.fetchone():
             hashed_pw = generate_password_hash("admin123")
             cursor.execute('INSERT INTO users (username, password, role) VALUES (?, ?, ?)', ("admin", hashed_pw, "admin"))
-
         conn.commit()
 
 init_db()
@@ -93,23 +88,17 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        
         with sqlite3.connect(DB_FILE) as conn:
             conn.row_factory = sqlite3.Row
             user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-            
             if user and check_password_hash(user['password'], password):
                 session['user_id'] = user['id']
                 session['username'] = user['username']
                 session['role'] = user['role']
-                
-                if user['role'] == 'admin':
-                    return redirect(url_for('admin_panel'))
-                else:
-                    return redirect(url_for('reservations_view'))
+                if user['role'] == 'admin': return redirect(url_for('admin_panel'))
+                else: return redirect(url_for('reservations_view'))
             else:
                 error = "❌ Invalid Username or Password"
-
     return render_template('login.html', error=error)
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -119,7 +108,6 @@ def register():
         username = request.form.get('username')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
-
         if password != confirm_password:
             error = "❌ Passwords do not match!"
         else:
@@ -130,7 +118,6 @@ def register():
                 return redirect(url_for('login'))
             except sqlite3.IntegrityError:
                 error = "❌ Username already exists!"
-
     return render_template('register.html', error=error)
 
 @app.route('/logout')
@@ -142,21 +129,17 @@ def logout():
 @app.route('/reservations', methods=['GET', 'POST'])
 def reservations_view():
     if 'user_id' not in session: return redirect(url_for('login'))
-
     new_otp = None
     message = None
-    
     if request.method == 'POST':
         if 'create_booking' in request.form:
             name = session['username'] 
             date = request.form.get('date')
             time = request.form.get('time')
             new_otp = str(random.randint(1000, 9999))
-            
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('INSERT INTO reservations (otp, name, res_date, time_slot, created_at, is_used, user_id) VALUES (?, ?, ?, ?, ?, 0, ?)', 
                              (new_otp, name, date, time, get_sl_time(), session['user_id']))
-
         elif 'cancel_booking' in request.form:
             otp = request.form.get('otp_check')
             with sqlite3.connect(DB_FILE) as conn:
@@ -167,18 +150,15 @@ def reservations_view():
                     conn.commit()
                     message = "✅ Reservation cancelled successfully."
                 else: message = "❌ Invalid OTP or not your booking."
-
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         my_bookings = conn.execute('SELECT * FROM reservations WHERE user_id = ? AND is_used = 0 ORDER BY created_at DESC', (session['user_id'],)).fetchall()
-        
     return render_template('reservations.html', bookings=my_bookings, new_otp=new_otp, message=message, username=session['username'])
 
 # --- ADMIN PANEL ---
 @app.route('/admin/panel', methods=['GET', 'POST'])
 def admin_panel():
     if session.get('role') != 'admin': return redirect(url_for('login'))
-
     msg = None
     if request.method == 'POST':
         if 'post_announcement' in request.form:
@@ -186,50 +166,42 @@ def admin_panel():
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('INSERT INTO announcements (message, created_at) VALUES (?, ?)', (text, get_sl_time()))
             msg = "📢 Announcement Posted"
-        
         elif 'delete_announcement' in request.form:
             ann_id = request.form.get('ann_id')
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('DELETE FROM announcements WHERE id = ?', (ann_id,))
             msg = "🗑️ Announcement Deleted"
-
         elif 'reset_seats' in request.form:
             target = int(request.form.get('seat_count'))
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('UPDATE status SET available_seats = ? WHERE id=1', (target,))
             msg = f"✅ Seats reset to {target}"
-        
         elif 'update_capacity' in request.form:
             new_total = int(request.form.get('total_capacity'))
             current_seats = get_seats()
             old_total = get_total_capacity()
             people_inside = max(0, old_total - current_seats)
             new_available = max(0, new_total - people_inside)
-            
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('UPDATE settings SET value = ? WHERE key="total_capacity"', (new_total,))
                 conn.execute('UPDATE status SET available_seats = ? WHERE id=1', (new_available,))
             msg = f"✅ Capacity updated to {new_total}. (Occupancy: {people_inside})"
-
         elif 'delete_staff' in request.form:
             uid = request.form.get('staff_uid')
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('DELETE FROM staff WHERE uid = ?', (uid,))
             msg = "🗑️ Staff deleted."
-
         elif 'add_staff' in request.form:
             uid = request.form.get('new_uid')
             name = request.form.get('new_name')
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('INSERT OR REPLACE INTO staff (uid, name, is_present, last_seen) VALUES (?, ?, 0, ?)', (uid, name, get_sl_time()))
             msg = f"✅ Added {name}"
-            
         elif 'delete_res' in request.form:
             otp = request.form.get('res_otp')
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('DELETE FROM reservations WHERE otp = ?', (otp,))
             msg = "🗑️ Reservation deleted."
-
         elif 'toggle_status' in request.form:
             current = get_system_status()
             new_val = '0' if current == 1 else '1'
@@ -249,11 +221,9 @@ def admin_panel():
 
     return render_template('admin_panel.html', seats=seats, total_capacity=total_capacity, staff=all_staff, reservations=all_reservations, announcements=all_announcements, msg=msg, system_status=system_status)
 
-# 🟢 NEW: USER MANAGEMENT ROUTE
 @app.route('/admin/users', methods=['GET', 'POST'])
 def admin_users():
     if session.get('role') != 'admin': return redirect(url_for('login'))
-    
     msg = None
     if request.method == 'POST':
         if 'delete_user' in request.form:
@@ -261,28 +231,22 @@ def admin_users():
             with sqlite3.connect(DB_FILE) as conn:
                 conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
             msg = "🗑️ User Account Deleted"
-
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         all_users = conn.execute('SELECT * FROM users ORDER BY id DESC').fetchall()
-
     return render_template('admin_users.html', users=all_users, msg=msg)
 
-# --- HELPERS ---
 @app.route('/admin/edit_staff/<uid>', methods=['GET', 'POST'])
 def edit_staff(uid):
     if session.get('role') != 'admin': return redirect(url_for('login'))
-    
     if request.method == 'POST':
         new_name = request.form.get('name')
         with sqlite3.connect(DB_FILE) as conn:
             conn.execute('UPDATE staff SET name = ? WHERE uid = ?', (new_name, uid))
         return redirect(url_for('admin_panel'))
-
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
         person = conn.execute('SELECT * FROM staff WHERE uid = ?', (uid,)).fetchone()
-
     if not person: return "Staff member not found", 404
     return render_template('edit_staff.html', person=person)
 
@@ -294,6 +258,18 @@ def staff_view():
     return render_template('staff.html', staff=active_staff)
 
 # --- API ROUTES ---
+@app.route('/get_staff', methods=['GET'])
+def get_staff():
+    try:
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT uid FROM staff')
+            rows = cursor.fetchall()
+            staff_cards = [row[0] for row in rows]
+            return ",".join(staff_cards), 200
+    except Exception as e:
+        return str(e), 500
+
 @app.route('/update_data', methods=['POST'])
 def update_data():
     try:
