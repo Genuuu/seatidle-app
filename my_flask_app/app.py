@@ -344,6 +344,13 @@ def get_admin_stats():
     status = get_system_status()
     return jsonify({"seats": seats, "total_capacity": total, "system_status": status})
 
+@app.route('/api/get_active_staff_cards')
+def get_active_staff_cards():
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.row_factory = sqlite3.Row
+        active_staff = conn.execute('SELECT * FROM staff WHERE is_present = 1').fetchall()
+    return render_template('_staff_cards.html', staff=active_staff)
+
 @app.route('/api/get_staff_table')
 def get_staff_table():
     if session.get('role') != 'admin': return "Access Denied", 403
