@@ -1,0 +1,11 @@
+{% for person in staff %}
+<div class="staff-card">
+    <div class="staff-avatar">{{ person['name'][0] }}</div>
+    <h3 style="font-size: 18px; margin-bottom: 5px;">{{ person['name'] }}</h3>
+    <span class="badge badge-green">In since {{ person['last_seen'][11:16] }}</span>
+</div>
+{% else %}
+<div class="card center" style="grid-column: 1/-1; color: var(--text-muted);">
+    No staff currently present.
+</div>
+{% endfor %}
