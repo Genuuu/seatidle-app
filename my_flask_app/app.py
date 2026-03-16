@@ -76,9 +76,7 @@ def get_system_status():
 # --- PUBLIC ROUTES ---
 @app.route('/')
 def dashboard():
-    seats = get_seats()
     total = get_total_capacity()
-    occupancy = max(0, total - seats)
     system_status = get_system_status()
     
     with sqlite3.connect(DB_FILE) as conn:
@@ -87,7 +85,16 @@ def dashboard():
         announcement = row[0] if row else None
         ann_time = row[1] if row else None
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
+        
+        # Grab the active reservations first
         res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
+
+    # --- THE NEW MATH ---
+    # 1. Figure out exactly how many people are physically inside
+    occupancy = max(0, total - get_seats()) 
+    
+    # 2. True Available Seats = Capacity - People Inside - Reservations
+    seats = max(0, total - occupancy - res_count)
 
     return render_template('dashboard.html', seats=seats, announcement=announcement, ann_time=ann_time, 
                            system_status=system_status, occupancy=occupancy, 
