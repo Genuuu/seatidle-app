@@ -328,19 +328,30 @@ def update_data():
 
 @app.route('/api/dashboard_stats')
 def get_dashboard_stats():
-    seats = get_seats()
     total = get_total_capacity()
-    occupancy = max(0, total - seats)
     system_status = get_system_status()
+    
     with sqlite3.connect(DB_FILE) as conn:
         staff_count = conn.execute('SELECT count(*) FROM staff WHERE is_present = 1').fetchone()[0]
         res_count = conn.execute('SELECT count(*) FROM reservations WHERE is_used = 0').fetchone()[0]
         row = conn.execute('SELECT message, created_at FROM announcements ORDER BY id DESC LIMIT 1').fetchone()
         announcement = row[0] if row else None
         ann_time = row[1] if row else None
+
+    # 1. Figure out exact physical occupancy
+    occupancy = max(0, total - get_seats()) 
+    
+    # 2. True Available Seats = Capacity - People Inside - Reservations
+    seats = max(0, total - occupancy - res_count)
+
     return jsonify({
-        "seats": seats, "occupancy": occupancy, "staff": staff_count, "reservations": res_count,
-        "system_status": system_status, "announcement": announcement, "announcement_time": ann_time
+        "seats": seats, 
+        "occupancy": occupancy, 
+        "staff": staff_count, 
+        "reservations": res_count,
+        "system_status": system_status, 
+        "announcement": announcement, 
+        "announcement_time": ann_time
     })
 
 @app.route('/api/admin_stats')
