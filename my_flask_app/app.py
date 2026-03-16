@@ -367,6 +367,32 @@ def get_reservations_table():
         reservations = conn.execute('SELECT * FROM reservations ORDER BY created_at DESC').fetchall()
     return render_template('_table_rows.html', reservations=reservations)
 
+# NEW: Verifies a student's OTP from the ESP32 Keypad
+@app.route('/verify_otp', methods=['POST'])
+def verify_otp():
+    try:
+        update_last_ping() # Checking an OTP counts as a heartbeat!
+        data = request.get_json(force=True, silent=True)
+        if not data: return jsonify({"status": "error"}), 400
+        
+        otp = data.get('otp', "")
+        
+        with sqlite3.connect(DB_FILE) as conn:
+            cursor = conn.cursor()
+            # Check if the OTP exists and hasn't been used yet
+            cursor.execute('SELECT * FROM reservations WHERE otp = ? AND is_used = 0', (otp,))
+            res = cursor.fetchone()
+            
+            if res:
+                # Mark it as used!
+                cursor.execute('UPDATE reservations SET is_used = 1 WHERE otp = ?', (otp,))
+                conn.commit()
+                return jsonify({"status": "success"}), 200
+            else:
+                return jsonify({"status": "error", "message": "Invalid or Used OTP"}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
 # --- SIMULATOR ---
 @app.route('/simulator')
 def simulator():
